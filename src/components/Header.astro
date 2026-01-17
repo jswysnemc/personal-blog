@@ -1,0 +1,62 @@
+---
+import LanguageSwitcher from './LanguageSwitcher.astro';
+import ThemeToggle from './ThemeToggle.tsx';
+import { getLangFromUrl, useTranslations, type Lang } from '../lib/i18n';
+import { siteConfig } from '../lib/site.config';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang: propLang } = Astro.props;
+const lang = propLang || getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
+
+const basePath = lang === 'zh' ? '' : `/${lang}`;
+---
+
+<header class="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-primary-100 dark:border-slate-800 transition-colors">
+  <nav class="container-wide py-4 flex items-center justify-between">
+    <!-- Logo -->
+    <a href={`${basePath}/`} class="flex items-center gap-2.5 group">
+      <!-- Book Icon -->
+      <svg class="w-8 h-8" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M4 7C4 5.89543 4.89543 5 6 5H14C15.1046 5 16 5.89543 16 7V26C16 26 14 25 10 25C6 25 4 26 4 26V7Z" class="fill-slate-800 dark:fill-slate-200 group-hover:fill-slate-700 dark:group-hover:fill-white transition-colors"/>
+        <path d="M28 7C28 5.89543 27.1046 5 26 5H18C16.8954 5 16 5.89543 16 7V26C16 26 18 25 22 25C26 25 28 26 28 26V7Z" class="fill-slate-600 dark:fill-slate-400 group-hover:fill-slate-500 dark:group-hover:fill-slate-300 transition-colors"/>
+        <path d="M7 10H13M7 13H12M7 16H13M7 19H11" class="stroke-slate-500 dark:stroke-slate-500" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M19 10H25M20 13H25M19 16H24M21 19H25" class="stroke-slate-400 dark:stroke-slate-600" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M16 5V26" class="stroke-slate-900 dark:stroke-slate-700" stroke-width="1"/>
+        <circle cx="26" cy="7" r="2.5" class="fill-blue-500"/>
+      </svg>
+      <!-- Site Title -->
+      <span class="text-xl font-semibold text-primary-900 dark:text-white group-hover:text-primary-700 dark:group-hover:text-slate-300 transition-colors">
+        {siteConfig.title}
+      </span>
+    </a>
+
+    <div class="flex items-center gap-6">
+      <ul class="flex items-center gap-8">
+        <li>
+          <a href={`${basePath}/`} class="text-primary-600 dark:text-slate-400 hover:text-primary-900 dark:hover:text-white transition-colors">
+            {t('nav.home')}
+          </a>
+        </li>
+        <li>
+          <a href={`${basePath}/blog`} class="text-primary-600 dark:text-slate-400 hover:text-primary-900 dark:hover:text-white transition-colors">
+            {t('nav.blog')}
+          </a>
+        </li>
+        <li>
+          <a href={`${basePath}/about`} class="text-primary-600 dark:text-slate-400 hover:text-primary-900 dark:hover:text-white transition-colors">
+            {t('nav.about')}
+          </a>
+        </li>
+      </ul>
+
+      <div class="flex items-center gap-2">
+        <ThemeToggle client:load />
+        <LanguageSwitcher />
+      </div>
+    </div>
+  </nav>
+</header>

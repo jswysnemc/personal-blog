@@ -1,0 +1,13 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import BlogDetailClient from '../../../components/BlogDetailClient';
+
+export const prerender = false;
+
+const lang = 'en';
+const { slug } = Astro.params;
+---
+
+<BaseLayout title="Blog" lang={lang}>
+  <BlogDetailClient client:load lang={lang} initialSlug={slug} />
+</BaseLayout>

@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Astro
+.astro/
+
+# Docker
+*.tar
+
+# Data files (comments, etc.)
+data/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+
+.claude/
+.marscode/

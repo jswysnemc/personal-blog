@@ -1,0 +1,14 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import AdminPanel from '../../../components/AdminPanel';
+
+export const prerender = true;
+
+const lang = 'en';
+---
+
+<BaseLayout title="Admin" lang={lang}>
+  <div class="container-narrow">
+    <AdminPanel client:load lang={lang} />
+  </div>
+</BaseLayout>

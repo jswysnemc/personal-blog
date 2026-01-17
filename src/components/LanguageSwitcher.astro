@@ -1,0 +1,53 @@
+---
+import { languages, getLangFromUrl, getLocalizedPath, type Lang } from '../lib/i18n';
+
+const currentLang = getLangFromUrl(Astro.url);
+const currentPath = Astro.url.pathname.replace(/^\/(zh|en)/, '') || '/';
+---
+
+<div class="relative">
+  <button
+    id="lang-toggle"
+    class="flex items-center gap-1 px-3 py-1.5 text-sm text-primary-600 hover:text-primary-900 transition-colors rounded-md hover:bg-primary-50"
+    aria-label="Switch language"
+  >
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+    </svg>
+    <span>{languages[currentLang]}</span>
+  </button>
+
+  <div
+    id="lang-menu"
+    class="hidden absolute right-0 mt-1 py-1 bg-white rounded-lg shadow-lg border border-primary-100 min-w-[100px] z-50"
+  >
+    {Object.entries(languages).map(([lang, label]) => (
+      <a
+        href={lang === 'zh' ? currentPath : `/${lang}${currentPath}`}
+        class:list={[
+          'block px-4 py-2 text-sm transition-colors',
+          currentLang === lang
+            ? 'text-primary-900 bg-primary-50'
+            : 'text-primary-600 hover:bg-primary-50 hover:text-primary-900'
+        ]}
+      >
+        {label}
+      </a>
+    ))}
+  </div>
+</div>
+
+<script>
+  const toggle = document.getElementById('lang-toggle');
+  const menu = document.getElementById('lang-menu');
+
+  toggle?.addEventListener('click', () => {
+    menu?.classList.toggle('hidden');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!toggle?.contains(e.target as Node) && !menu?.contains(e.target as Node)) {
+      menu?.classList.add('hidden');
+    }
+  });
+</script>

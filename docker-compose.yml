@@ -1,0 +1,40 @@
+services:
+  blog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Build-time args for Astro PUBLIC_* variables
+        PUBLIC_SOCIAL_LINKS: ${PUBLIC_SOCIAL_LINKS:-}
+        PUBLIC_SITE_TITLE: ${PUBLIC_SITE_TITLE:-}
+        PUBLIC_SITE_DESCRIPTION: ${PUBLIC_SITE_DESCRIPTION:-}
+        PUBLIC_SITE_AUTHOR: ${PUBLIC_SITE_AUTHOR:-}
+        PUBLIC_SHOW_ADMIN_LINK: ${PUBLIC_SHOW_ADMIN_LINK:-}
+        PUBLIC_COPYRIGHT_START_YEAR: ${PUBLIC_COPYRIGHT_START_YEAR:-}
+    ports:
+      - "4321:4321"
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=4321
+      - API_PORT=3001
+      - API_INTERNAL_URL=http://localhost:3001
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-blog_admin_2024}
+      - BLOG_DIR=/app/src/content/blog
+      - COMMENTS_FILE=/app/data/comments.json
+    volumes:
+      # Persist blog content
+      - ./src/content/blog:/app/src/content/blog
+      # Persist comments data
+      - blog_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:4321"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  blog_data:
+    driver: local

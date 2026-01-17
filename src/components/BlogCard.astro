@@ -1,0 +1,57 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { useTranslations, type Lang } from '../lib/i18n';
+
+interface Props {
+  post: CollectionEntry<'blog'>;
+  lang?: Lang;
+}
+
+const { post, lang = 'zh' } = Astro.props;
+const t = useTranslations(lang);
+const { title, description, pubDate, category, tags } = post.data;
+const basePath = lang === 'zh' ? '' : `/${lang}`;
+
+const formattedDate = pubDate.toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric'
+});
+
+const categoryColors: Record<string, string> = {
+  tech: 'text-blue-600 border-blue-600',
+  life: 'text-green-600 border-green-600',
+  thoughts: 'text-purple-600 border-purple-600',
+  tutorial: 'text-orange-600 border-orange-600',
+  reading: 'text-pink-600 border-pink-600',
+};
+
+const categoryKey = `category.${category}` as keyof typeof import('../lib/i18n').ui.zh;
+---
+
+<article class="blog-card group">
+  <a href={`${basePath}/blog/${post.slug}`} class="block">
+    <div class="flex items-center gap-3 mb-3">
+      <span class:list={['category-badge text-xs', categoryColors[category] || 'text-primary-600 border-primary-600']}>
+        {t(categoryKey)}
+      </span>
+      <time class="text-sm text-primary-400">{formattedDate}</time>
+    </div>
+
+    <h2 class="text-xl font-semibold text-primary-900 mb-2 group-hover:text-primary-700 transition-colors">
+      {title}
+    </h2>
+
+    <p class="text-primary-600 leading-relaxed mb-4">
+      {description}
+    </p>
+
+    {tags.length > 0 && (
+      <div class="flex flex-wrap gap-2">
+        {tags.slice(0, 3).map(tag => (
+          <span class="text-xs text-primary-400">#{tag}</span>
+        ))}
+      </div>
+    )}
+  </a>
+</article>

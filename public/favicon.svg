@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Minimalist open book icon -->
+  <path d="M4 7C4 5.89543 4.89543 5 6 5H14C15.1046 5 16 5.89543 16 7V26C16 26 14 25 10 25C6 25 4 26 4 26V7Z" fill="#1e293b"/>
+  <path d="M28 7C28 5.89543 27.1046 5 26 5H18C16.8954 5 16 5.89543 16 7V26C16 26 18 25 22 25C26 25 28 26 28 26V7Z" fill="#334155"/>
+  <!-- Page lines left -->
+  <path d="M7 10H13M7 13H12M7 16H13M7 19H11" stroke="#64748b" stroke-width="1.2" stroke-linecap="round"/>
+  <!-- Page lines right -->
+  <path d="M19 10H25M20 13H25M19 16H24M21 19H25" stroke="#94a3b8" stroke-width="1.2" stroke-linecap="round"/>
+  <!-- Center binding -->
+  <path d="M16 5V26" stroke="#0f172a" stroke-width="1"/>
+  <!-- Accent marker -->
+  <circle cx="26" cy="7" r="2.5" fill="#3b82f6"/>
+</svg>

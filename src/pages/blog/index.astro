@@ -1,0 +1,18 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import BlogList from '../../components/BlogList';
+import { useTranslations } from '../../lib/i18n';
+
+export const prerender = true;
+
+const lang = 'zh';
+const t = useTranslations(lang);
+---
+
+<BaseLayout title={t('blog.title')} lang={lang}>
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <h1 class="text-4xl font-bold text-primary-900 mb-8">{t('blog.title')}</h1>
+
+    <BlogList client:load lang={lang} />
+  </div>
+</BaseLayout>

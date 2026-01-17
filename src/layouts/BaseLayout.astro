@@ -1,0 +1,57 @@
+---
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+import { type Lang } from '../lib/i18n';
+
+interface Props {
+  title: string;
+  description?: string;
+  lang?: Lang;
+}
+
+const { title, description = 'A minimal personal blog', lang = 'zh' } = Astro.props;
+const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
+---
+
+<!DOCTYPE html>
+<html lang={htmlLang} class="">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content={description} />
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>{title}</title>
+
+  <!-- Prevent flash of wrong theme -->
+  <script is:inline>
+    (function() {
+      const THEME_KEY = 'blog-theme';
+      const stored = localStorage.getItem(THEME_KEY) || 'system';
+      let effectiveTheme = stored;
+
+      if (stored === 'system') {
+        effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+
+      if (effectiveTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0f172a');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#ffffff');
+      }
+    })();
+  </script>
+</head>
+<body class="min-h-screen flex flex-col">
+  <Header lang={lang} />
+
+  <main class="flex-1 py-12">
+    <slot />
+  </main>
+
+  <Footer lang={lang} />
+</body>
+</html>

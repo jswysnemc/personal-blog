@@ -1,0 +1,90 @@
+---
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+import { useTranslations, type Lang } from '../lib/i18n';
+
+interface Props {
+  title: string;
+  description?: string;
+  pubDate: Date;
+  category: string;
+  tags?: string[];
+  lang?: Lang;
+}
+
+const { title, description, pubDate, category, tags = [], lang = 'zh' } = Astro.props;
+const t = useTranslations(lang);
+const basePath = lang === 'zh' ? '' : `/${lang}`;
+const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
+
+const formattedDate = pubDate.toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric'
+});
+
+const categoryColors: Record<string, string> = {
+  tech: 'text-blue-600 border-blue-600',
+  life: 'text-green-600 border-green-600',
+  thoughts: 'text-purple-600 border-purple-600',
+  tutorial: 'text-orange-600 border-orange-600',
+  reading: 'text-pink-600 border-pink-600',
+};
+
+const categoryKey = `category.${category}` as keyof typeof import('../lib/i18n').ui.zh;
+---
+
+<!DOCTYPE html>
+<html lang={htmlLang}>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content={description} />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>{title}</title>
+</head>
+<body class="min-h-screen flex flex-col">
+  <Header lang={lang} />
+
+  <main class="flex-1 py-12">
+    <article class="container-narrow">
+      <header class="mb-12">
+        <div class="flex items-center gap-4 mb-4">
+          <a
+            href={`${basePath}/category/${category}`}
+            class:list={['category-badge', categoryColors[category] || 'text-primary-600 border-primary-600']}
+          >
+            {t(categoryKey)}
+          </a>
+          <time class="text-sm text-primary-500">{formattedDate}</time>
+        </div>
+
+        <h1 class="text-4xl font-bold text-primary-900 mb-4 leading-tight">
+          {title}
+        </h1>
+
+        {description && (
+          <p class="text-xl text-primary-600 leading-relaxed">
+            {description}
+          </p>
+        )}
+
+        {tags.length > 0 && (
+          <div class="flex flex-wrap gap-2 mt-6">
+            {tags.map(tag => (
+              <span class="tag">{tag}</span>
+            ))}
+          </div>
+        )}
+      </header>
+
+      <div class="prose prose-lg max-w-none">
+        <slot />
+      </div>
+    </article>
+  </main>
+
+  <Footer lang={lang} />
+</body>
+</html>

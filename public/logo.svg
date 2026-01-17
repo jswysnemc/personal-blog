@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 40" fill="none">
+  <!-- Icon - Open Book -->
+  <g transform="translate(2, 4)">
+    <path d="M2 4C2 2.89543 2.89543 2 4 2H12C13.1046 2 14 2.89543 14 4V23C14 23 12 22 8 22C4 22 2 23 2 23V4Z" fill="#1e293b"/>
+    <path d="M26 4C26 2.89543 25.1046 2 24 2H16C14.8954 2 14 2.89543 14 4V23C14 23 16 22 20 22C24 22 26 23 26 23V4Z" fill="#334155"/>
+    <!-- Page lines left -->
+    <path d="M5 7H11M5 10H10M5 13H11M5 16H9" stroke="#64748b" stroke-width="1.2" stroke-linecap="round"/>
+    <!-- Page lines right -->
+    <path d="M17 7H23M18 10H23M17 13H22M19 16H23" stroke="#94a3b8" stroke-width="1.2" stroke-linecap="round"/>
+    <!-- Center binding -->
+    <path d="M14 2V23" stroke="#0f172a" stroke-width="1"/>
+    <!-- Accent dot -->
+    <circle cx="24" cy="4" r="2.5" fill="#3b82f6"/>
+  </g>
+
+  <!-- Text Logo -->
+  <text x="38" y="27" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="20" font-weight="600" fill="#1e293b" letter-spacing="-0.5">
+    Blog
+  </text>
+  <text x="76" y="27" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="20" font-weight="300" fill="#64748b" letter-spacing="-0.5">
+    .
+  </text>
+  <text x="82" y="27" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="20" font-weight="300" fill="#64748b" letter-spacing="-0.5">
+    dev
+  </text>
+</svg>
