@@ -1,4 +1,5 @@
-const API_BASE = 'http://localhost:3001';
+// Use relative URLs - works through Astro proxy in both dev and production
+const API_BASE = '';
 const ADMIN_TOKEN_KEY = 'blog_admin_token';
 
 export async function login(password: string): Promise<{ success: boolean; error?: string }> {
