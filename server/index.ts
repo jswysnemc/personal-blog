@@ -148,6 +148,13 @@ const server = http.createServer(async (req, res) => {
         };
       });
 
+      // Sort by pubDate, newest first
+      posts.sort((a, b) => {
+        const dateA = new Date(a.pubDate || '1970-01-01').getTime();
+        const dateB = new Date(b.pubDate || '1970-01-01').getTime();
+        return dateB - dateA;
+      });
+
       res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
       res.end(JSON.stringify(posts));
       return;
