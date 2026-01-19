@@ -1,7 +1,7 @@
 ---
 title: "Building a REST API with Go and Gin"
 description: "Step-by-step tutorial on creating a production-ready REST API using Go, Gin framework, and PostgreSQL"
-pubDate: 2024-01-05
+pubDate: 2026-01-19
 category: tutorial
 tags: ["Go", "Gin", "REST API", "Backend", "PostgreSQL"]
 draft: false

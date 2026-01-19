@@ -27,13 +27,16 @@ const categoryColors: Record<string, string> = {
 };
 
 const categoryKey = `category.${category}` as keyof typeof import('../lib/i18n').ui.zh;
+// Get category name with fallback for custom categories
+const { ui } = await import('../lib/i18n');
+const categoryName = ui[lang][categoryKey] || ui.zh[categoryKey] || category;
 ---
 
 <article class="blog-card group">
   <a href={`${basePath}/blog/${post.slug}`} class="block">
     <div class="flex items-center gap-3 mb-3">
       <span class:list={['category-badge text-xs', categoryColors[category] || 'text-primary-600 border-primary-600']}>
-        {t(categoryKey)}
+        {categoryName}
       </span>
       <time class="text-sm text-primary-400">{formattedDate}</time>
     </div>

@@ -5,6 +5,7 @@ import { ui, type Lang } from '../lib/i18n';
 interface Props {
   lang?: Lang;
   initialCategory?: string;
+  initialTag?: string;
 }
 
 const categoryColors: Record<string, string> = {
@@ -23,16 +24,33 @@ const categoryBgColors: Record<string, string> = {
   reading: 'bg-pink-600',
 };
 
-export default function BlogList({ lang = 'zh', initialCategory }: Props) {
+export default function BlogList({ lang = 'zh', initialCategory, initialTag }: Props) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory || null);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedTag, setSelectedTag] = useState<string | null>(initialTag || null);
   const [searchQuery, setSearchQuery] = useState('');
 
   const t = (key: keyof typeof ui.zh) => ui[lang][key] || ui.zh[key];
   const basePath = lang === 'zh' ? '' : `/${lang}`;
+
+  // Get category name with fallback for custom categories
+  const getCategoryName = (category: string) => {
+    const translationKey = `category.${category}` as keyof typeof ui.zh;
+    return ui[lang][translationKey] || ui.zh[translationKey] || category;
+  };
+
+  // Read tag from URL on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tagParam = params.get('tag');
+      if (tagParam) {
+        setSelectedTag(tagParam);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     loadPosts();
@@ -187,7 +205,7 @@ export default function BlogList({ lang = 'zh', initialCategory }: Props) {
             </span>
             {selectedCategory && (
               <span className={`inline-flex items-center gap-1 px-2 py-1 text-sm rounded-full ${categoryColors[selectedCategory] || 'bg-gray-100 text-gray-600'}`}>
-                {t(`category.${selectedCategory}` as keyof typeof ui.zh)}
+                {getCategoryName(selectedCategory)}
                 <button onClick={() => setSelectedCategory(null)} className="hover:opacity-70">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -238,7 +256,7 @@ export default function BlogList({ lang = 'zh', initialCategory }: Props) {
               <a href={`${basePath}/blog/${post.slug}`} className="block">
                 <div className="flex items-center gap-3 mb-3">
                   <span className={`category-badge text-xs ${categoryColors[post.category] || 'text-gray-600 border-gray-600'}`}>
-                    {t(`category.${post.category}` as keyof typeof ui.zh)}
+                    {getCategoryName(post.category)}
                   </span>
                   <time className="text-sm text-gray-400">{formatDate(post.pubDate)}</time>
                 </div>
@@ -302,7 +320,7 @@ export default function BlogList({ lang = 'zh', initialCategory }: Props) {
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    <span>{t(`category.${cat}` as keyof typeof ui.zh)}</span>
+                    <span>{getCategoryName(cat)}</span>
                     <span className={`text-xs ${selectedCategory === cat ? 'text-white/70' : 'text-gray-400'}`}>
                       {count}
                     </span>

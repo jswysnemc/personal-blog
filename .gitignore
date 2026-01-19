@@ -43,3 +43,10 @@ data/
 
 .claude/
 .marscode/
+
+# Design mockups and prototypes
+*.html.backup
+blog-admin-redesign.html
+
+# Backup files
+*.backup

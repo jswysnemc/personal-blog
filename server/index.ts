@@ -136,6 +136,9 @@ const server = http.createServer(async (req, res) => {
               if (typeof value === 'string') {
                 value = value.replace(/^["']|["']$/g, '');
               }
+              // 解析布尔值
+              if (value === 'true') value = true;
+              if (value === 'false') value = false;
               frontmatter[key.trim()] = value;
             }
           });
@@ -163,7 +166,7 @@ const server = http.createServer(async (req, res) => {
     // 创建/更新博客
     if (req.method === 'POST' && url.pathname === '/api/posts') {
       const body = await parseBody(req);
-      const { title, description, category, tags, content, slug: existingSlug } = JSON.parse(body);
+      const { title, description, category, tags, content, slug: existingSlug, draft } = JSON.parse(body);
 
       const slug = existingSlug || generateSlug(title);
       const filename = `${slug}.md`;
@@ -175,7 +178,7 @@ description: "${description}"
 pubDate: ${new Date().toISOString().split('T')[0]}
 category: ${category}
 tags: [${(tags || []).map((t: string) => `"${t}"`).join(', ')}]
-draft: false
+draft: ${draft === true || draft === 'true' ? 'true' : 'false'}
 ---
 
 ${content}`;
@@ -210,6 +213,9 @@ ${content}`;
               if (typeof value === 'string') {
                 value = value.replace(/^["']|["']$/g, '');
               }
+              // 解析布尔值
+              if (value === 'true') value = true;
+              if (value === 'false') value = false;
               frontmatter[key.trim()] = value;
             }
           });
@@ -259,7 +265,7 @@ ${content}`;
     // 提交评论
     if (req.method === 'POST' && url.pathname === '/api/comments') {
       const body = await parseBody(req);
-      const { postSlug, content, author, authorColor } = JSON.parse(body);
+      const { postSlug, content, author, authorColor, isAuthor } = JSON.parse(body);
 
       const comments = JSON.parse(fs.readFileSync(COMMENTS_FILE, 'utf-8'));
       if (!comments[postSlug]) {
@@ -273,6 +279,7 @@ ${content}`;
         content,
         createdAt: new Date().toISOString(),
         postSlug,
+        isAuthor: isAuthor || false,
       };
 
       comments[postSlug].push(newComment);

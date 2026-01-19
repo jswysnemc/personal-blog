@@ -17,26 +17,33 @@ export default function TableOfContents({ content, lang = 'zh' }: Props) {
   const [activeId, setActiveId] = useState<string>('');
 
   useEffect(() => {
-    const lines = content.split('\n');
-    const parsed: Heading[] = [];
+    // Wait for DOM to be ready with rendered headings from rehype-slug
+    const extractHeadingsFromDOM = () => {
+      const article = document.querySelector('.prose-article');
+      if (!article) return;
 
-    lines.forEach(line => {
-      const match = line.match(/^(#{1,6})\s+(.+)$/);
-      if (match) {
-        const level = match[1].length;
-        const text = match[2].trim();
-        const id = text
-          .toLowerCase()
-          .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
-          .replace(/^-|-$/g, '');
+      const headingElements = article.querySelectorAll('h2[id], h3[id], h4[id]');
+      const parsed: Heading[] = [];
 
-        if (level >= 2 && level <= 4) {
+      headingElements.forEach((el) => {
+        const id = el.getAttribute('id');
+        const text = el.textContent?.trim() || '';
+        const level = parseInt(el.tagName.charAt(1), 10);
+
+        if (id && text) {
           parsed.push({ id, text, level });
         }
-      }
+      });
+
+      setHeadings(parsed);
+    };
+
+    // Use requestAnimationFrame to ensure DOM is ready after React renders
+    const timer = requestAnimationFrame(() => {
+      extractHeadingsFromDOM();
     });
 
-    setHeadings(parsed);
+    return () => cancelAnimationFrame(timer);
   }, [content]);
 
   useEffect(() => {
@@ -68,12 +75,19 @@ export default function TableOfContents({ content, lang = 'zh' }: Props) {
   const handleClick = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
+      const headerOffset = 140; // Account for fixed header + sticky breadcrumb
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.scrollY - headerOffset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
     }
   };
 
   return (
-    <nav className="sticky top-24">
+    <nav className="sticky top-32">
       {/* Header */}
       <div className="flex items-center gap-2 mb-4">
         <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">

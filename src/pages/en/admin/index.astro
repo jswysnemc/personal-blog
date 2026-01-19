@@ -7,7 +7,7 @@ export const prerender = true;
 const lang = 'en';
 ---
 
-<BaseLayout title="Admin" lang={lang}>
+<BaseLayout title="Admin" lang={lang} breadcrumbs={[{ label: 'Admin' }]}>
   <div class="container-narrow">
     <AdminPanel client:load lang={lang} />
   </div>

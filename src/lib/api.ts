@@ -19,6 +19,7 @@ export interface Comment {
   content: string;
   createdAt: string;
   postSlug: string;
+  isAuthor?: boolean;
 }
 
 // 博客文章 API
@@ -72,12 +73,13 @@ export async function submitComment(
   postSlug: string,
   content: string,
   author: string,
-  authorColor: string
+  authorColor: string,
+  isAuthor?: boolean
 ): Promise<Comment> {
   const res = await fetch(`${API_BASE}/api/comments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ postSlug, content, author, authorColor }),
+    body: JSON.stringify({ postSlug, content, author, authorColor, isAuthor }),
   });
   if (!res.ok) throw new Error('Failed to submit comment');
   return res.json();

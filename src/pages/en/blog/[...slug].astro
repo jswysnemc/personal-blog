@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import BlogDetailClient from '../../../components/BlogDetailClient';
+import { siteConfig } from '../../../lib/site.config';
 
 export const prerender = false;
 
@@ -9,5 +10,5 @@ const { slug } = Astro.params;
 ---
 
 <BaseLayout title="Blog" lang={lang}>
-  <BlogDetailClient client:load lang={lang} initialSlug={slug} />
+  <BlogDetailClient client:load lang={lang} initialSlug={slug} authorName={siteConfig.author} />
 </BaseLayout>
