@@ -16,9 +16,9 @@ const basePath = lang === 'zh' ? '' : `/${lang}`;
 ---
 
 <header class="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-primary-100 dark:border-slate-800 transition-colors">
-  <nav class="container-wide py-4 flex items-center justify-between">
-    <!-- Logo -->
-    <a href={`${basePath}/`} class="flex items-center gap-2.5 group">
+  <nav class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+    <!-- Logo - shifts left when breadcrumb enters header -->
+    <a href={`${basePath}/`} class="header-logo flex items-center gap-2.5 group transition-all duration-300">
       <!-- Book Icon -->
       <svg class="w-8 h-8" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M4 7C4 5.89543 4.89543 5 6 5H14C15.1046 5 16 5.89543 16 7V26C16 26 14 25 10 25C6 25 4 26 4 26V7Z" class="fill-slate-800 dark:fill-slate-200 group-hover:fill-slate-700 dark:group-hover:fill-white transition-colors"/>
@@ -28,8 +28,8 @@ const basePath = lang === 'zh' ? '' : `/${lang}`;
         <path d="M16 5V26" class="stroke-slate-900 dark:stroke-slate-700" stroke-width="1"/>
         <circle cx="26" cy="7" r="2.5" class="fill-blue-500"/>
       </svg>
-      <!-- Site Title -->
-      <span class="text-xl font-semibold text-primary-900 dark:text-white group-hover:text-primary-700 dark:group-hover:text-slate-300 transition-colors">
+      <!-- Site Title - collapses when breadcrumb enters header -->
+      <span class="text-xl font-semibold text-primary-900 dark:text-white group-hover:text-primary-700 dark:group-hover:text-slate-300 transition-all duration-300 max-w-[200px] opacity-100">
         {siteConfig.title}
       </span>
     </a>

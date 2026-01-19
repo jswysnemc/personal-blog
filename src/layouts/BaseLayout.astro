@@ -1,17 +1,25 @@
 ---
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import Breadcrumb from '../components/Breadcrumb.astro';
 import '../styles/global.css';
 import { type Lang } from '../lib/i18n';
+
+interface BreadcrumbItem {
+  label: string;
+  href?: string;
+}
 
 interface Props {
   title: string;
   description?: string;
   lang?: Lang;
+  breadcrumbs?: BreadcrumbItem[];
 }
 
-const { title, description = 'A minimal personal blog', lang = 'zh' } = Astro.props;
+const { title, description = 'A minimal personal blog', lang = 'zh', breadcrumbs } = Astro.props;
 const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
+const basePath = lang === 'zh' ? '' : `/${lang}`;
 ---
 
 <!DOCTYPE html>
@@ -49,9 +57,106 @@ const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
   <Header lang={lang} />
 
   <main class="flex-1 py-12">
+    {breadcrumbs && breadcrumbs.length > 0 && (
+      <>
+        <!-- Header-embedded breadcrumb - appears when scrolling -->
+        <div
+          id="header-breadcrumb"
+          class="fixed top-0 z-50 h-16 items-center pointer-events-none hidden opacity-0"
+          style="left: var(--header-logo-offset, 0px);"
+        >
+          <nav
+            class="flex items-center gap-2 text-sm pointer-events-auto h-full pr-4"
+            style="max-width: calc(100vw - var(--header-logo-offset, 0px) - 16px);"
+            aria-label="Breadcrumb"
+          >
+            <a href={`${basePath}/`} class="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+            </a>
+            {breadcrumbs.map((item, index) => (
+              <>
+                <svg class="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+                {item.href ? (
+                  <a href={item.href} class="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                    {item.label}
+                  </a>
+                ) : (
+                  <span class="text-slate-700 dark:text-slate-300 font-medium truncate max-w-[200px] sm:max-w-xs">
+                    {item.label}
+                  </span>
+                )}
+              </>
+            ))}
+          </nav>
+        </div>
+
+        <!-- Original breadcrumb - fades when header version appears -->
+        <div id="original-breadcrumb" class="sticky top-16 z-40 py-3 mb-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-primary-100 dark:border-slate-800 transition-opacity duration-300">
+          <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <Breadcrumb items={breadcrumbs} lang={lang} />
+          </div>
+        </div>
+      </>
+    )}
     <slot />
   </main>
 
   <Footer lang={lang} />
+
+  {breadcrumbs && breadcrumbs.length > 0 && (
+    <script is:inline>
+      (function() {
+        const originalBreadcrumb = document.getElementById('original-breadcrumb');
+        const headerBreadcrumb = document.getElementById('header-breadcrumb');
+        if (!originalBreadcrumb || !headerBreadcrumb) return;
+
+        let isSticky = false;
+
+        function updateHeaderLogoOffset() {
+          const logo = document.querySelector('.header-logo');
+          if (!logo) return;
+          const icon = logo.querySelector('svg');
+          const logoRect = (icon || logo).getBoundingClientRect();
+          const gap = 12;
+          const offset = Math.max(0, Math.round(logoRect.right + gap));
+          document.documentElement.style.setProperty('--header-logo-offset', `${offset}px`);
+        }
+
+        function handleScroll() {
+          const rect = originalBreadcrumb.getBoundingClientRect();
+          const nowSticky = rect.top <= 64;
+
+          if (nowSticky !== isSticky) {
+            isSticky = nowSticky;
+            if (isSticky) {
+              document.body.classList.add('breadcrumb-in-header');
+              requestAnimationFrame(updateHeaderLogoOffset);
+              setTimeout(updateHeaderLogoOffset, 350);
+              originalBreadcrumb.style.opacity = '0';
+              originalBreadcrumb.style.pointerEvents = 'none';
+              headerBreadcrumb.classList.remove('hidden');
+              headerBreadcrumb.classList.add('flex', 'animate-breadcrumb-slide-in');
+              headerBreadcrumb.style.opacity = '1';
+            } else {
+              document.body.classList.remove('breadcrumb-in-header');
+              originalBreadcrumb.style.opacity = '1';
+              originalBreadcrumb.style.pointerEvents = 'auto';
+              headerBreadcrumb.classList.add('hidden');
+              headerBreadcrumb.classList.remove('flex', 'animate-breadcrumb-slide-in');
+              headerBreadcrumb.style.opacity = '0';
+            }
+          }
+        }
+
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        window.addEventListener('resize', updateHeaderLogoOffset);
+        handleScroll();
+      })();
+    </script>
+  )}
 </body>
 </html>

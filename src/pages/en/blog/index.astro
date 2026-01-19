@@ -9,8 +9,8 @@ const lang = 'en';
 const t = useTranslations(lang);
 ---
 
-<BaseLayout title={t('blog.title')} lang={lang}>
-  <div class="max-w-6xl mx-auto px-4 py-8">
+<BaseLayout title={t('blog.title')} lang={lang} breadcrumbs={[{ label: t('blog.title') }]}>
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
     <h1 class="text-4xl font-bold text-primary-900 mb-8">{t('blog.title')}</h1>
 
     <BlogList client:load lang={lang} />

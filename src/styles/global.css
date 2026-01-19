@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Noto+Sans+SC:wght@400;500;600&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -435,4 +435,100 @@
 .dark .code-block ::selection {
   background: rgba(56, 139, 253, 0.4);
   color: #e6edf3;
+}
+
+/* ================================
+   KaTeX Math Styling
+   ================================ */
+
+/* Math block container */
+.math-block {
+  @apply text-lg;
+}
+
+/* Dark mode KaTeX colors */
+.dark .katex {
+  color: #e6edf3;
+}
+
+.dark .katex .mord,
+.dark .katex .mbin,
+.dark .katex .mrel,
+.dark .katex .mopen,
+.dark .katex .mclose,
+.dark .katex .mpunct,
+.dark .katex .minner {
+  color: #e6edf3;
+}
+
+/* ================================
+   Mermaid Diagram Styling
+   ================================ */
+
+/* Dark mode Mermaid */
+.dark .mermaid-svg svg {
+  background: transparent !important;
+}
+
+.dark .mermaid-svg text {
+  fill: #e6edf3 !important;
+}
+
+.dark .mermaid-svg .node rect,
+.dark .mermaid-svg .node circle,
+.dark .mermaid-svg .node ellipse,
+.dark .mermaid-svg .node polygon,
+.dark .mermaid-svg .node path {
+  stroke: #64748b !important;
+}
+
+.dark .mermaid-svg .edgePath .path {
+  stroke: #94a3b8 !important;
+}
+
+.dark .mermaid-svg .edgeLabel {
+  background-color: #1e293b !important;
+  color: #e6edf3 !important;
+}
+
+.dark .mermaid-svg .cluster rect {
+  fill: #1e293b !important;
+  stroke: #475569 !important;
+}
+
+/* ================================
+   Breadcrumb-in-Header Animation
+   ================================ */
+
+/* Header logo shifts and compresses when breadcrumb enters */
+.breadcrumb-in-header .header-logo {
+  transform: scale(0.8) translateX(-8px);
+  transform-origin: left center;
+}
+
+.breadcrumb-in-header .header-logo span {
+  max-width: 0;
+  width: 0;
+  min-width: 0;
+  flex: 0 1 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  margin-left: 0;
+}
+
+/* Breadcrumb slide-in animation */
+@keyframes breadcrumb-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-breadcrumb-slide-in {
+  animation: breadcrumb-slide-in 0.25s ease-out forwards;
 }

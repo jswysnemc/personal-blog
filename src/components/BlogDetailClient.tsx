@@ -1,13 +1,19 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import rehypeSlug from 'rehype-slug';
-import { fetchPost, fetchComments, submitComment as apiSubmitComment, deleteComment as apiDeleteComment, type Post, type Comment } from '../lib/api';
+import rehypeRaw from 'rehype-raw';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+import { fetchPost, fetchPosts, fetchComments, submitComment as apiSubmitComment, deleteComment as apiDeleteComment, type Post, type Comment } from '../lib/api';
 import { generateFingerprint } from '../lib/fingerprint';
 import { mapFingerprintToName, generateAvatarColor } from '../lib/nameMapper';
 import { isAdminLoggedIn, getToken } from '../lib/auth';
 import { ui, type Lang } from '../lib/i18n';
 import CodeBlock from './CodeBlock';
+import MermaidBlock from './MermaidBlock';
+import MathBlock, { InlineMath } from './MathBlock';
 import TableOfContents from './TableOfContents';
 import MentionInput from './MentionInput';
 import CommentContent from './CommentContent';
@@ -15,17 +21,28 @@ import CommentContent from './CommentContent';
 interface Props {
   lang?: Lang;
   initialSlug?: string;
+  authorName?: string;
 }
 
-const categoryStyles: Record<string, { bg: string; text: string; border: string }> = {
-  tech: { bg: 'bg-blue-50 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-800' },
-  life: { bg: 'bg-emerald-50 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200 dark:border-emerald-800' },
-  thoughts: { bg: 'bg-violet-50 dark:bg-violet-900/30', text: 'text-violet-700 dark:text-violet-300', border: 'border-violet-200 dark:border-violet-800' },
-  tutorial: { bg: 'bg-amber-50 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-800' },
-  reading: { bg: 'bg-rose-50 dark:bg-rose-900/30', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200 dark:border-rose-800' },
+const categoryStyles: Record<string, { bg: string; text: string; border: string; accent: string }> = {
+  tech: { bg: 'bg-blue-50 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-800', accent: 'bg-blue-500' },
+  life: { bg: 'bg-emerald-50 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200 dark:border-emerald-800', accent: 'bg-emerald-500' },
+  thoughts: { bg: 'bg-violet-50 dark:bg-violet-900/30', text: 'text-violet-700 dark:text-violet-300', border: 'border-violet-200 dark:border-violet-800', accent: 'bg-violet-500' },
+  tutorial: { bg: 'bg-amber-50 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-800', accent: 'bg-amber-500' },
+  reading: { bg: 'bg-rose-50 dark:bg-rose-900/30', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200 dark:border-rose-800', accent: 'bg-rose-500' },
 };
 
-export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
+// Calculate reading time
+const calculateReadingTime = (content: string): number => {
+  const wordsPerMinute = 200;
+  const chineseCharsPerMinute = 400;
+  const chineseChars = (content.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const englishWords = content.replace(/[\u4e00-\u9fa5]/g, ' ').split(/\s+/).filter(Boolean).length;
+  const minutes = Math.ceil((chineseChars / chineseCharsPerMinute) + (englishWords / wordsPerMinute));
+  return Math.max(1, minutes);
+};
+
+export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName = 'Author' }: Props) {
   const [slug, setSlug] = useState<string>(initialSlug || '');
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,8 +56,29 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // All posts for navigation and recommendations
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
+
+  // Breadcrumb sticky state
+  const [isBreadcrumbSticky, setIsBreadcrumbSticky] = useState(false);
+  const breadcrumbRef = useRef<HTMLDivElement>(null);
+
+  // Toast notification state
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const t = (key: keyof typeof ui.zh) => ui[lang][key] || ui.zh[key];
   const basePath = lang === 'zh' ? '' : `/${lang}`;
+
+  // Get category name with fallback for custom categories
+  const getCategoryName = (category: string) => {
+    const translationKey = `category.${category}` as keyof typeof ui.zh;
+    return ui[lang][translationKey] || ui.zh[translationKey] || category;
+  };
 
   useEffect(() => {
     if (!initialSlug) {
@@ -73,6 +111,52 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
     };
   }, [initialSlug]);
 
+  // Detect when breadcrumb becomes sticky and toggle body class for header coordination
+  useEffect(() => {
+    const handleScroll = () => {
+      if (breadcrumbRef.current) {
+        const rect = breadcrumbRef.current.getBoundingClientRect();
+        // Header is 64px (top-16), so when breadcrumb top equals 64, it's sticky
+        const isSticky = rect.top <= 64;
+        setIsBreadcrumbSticky(isSticky);
+
+        // Toggle body class for header animation coordination
+        if (isSticky) {
+          document.body.classList.add('breadcrumb-in-header');
+        } else {
+          document.body.classList.remove('breadcrumb-in-header');
+        }
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll(); // Check initial state
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      document.body.classList.remove('breadcrumb-in-header');
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isBreadcrumbSticky) return;
+    const updateHeaderLogoOffset = () => {
+      const logo = document.querySelector('.header-logo');
+      if (!logo) return;
+      const icon = logo.querySelector('svg');
+      const logoRect = (icon || logo).getBoundingClientRect();
+      const gap = 12;
+      const offset = Math.max(0, Math.round(logoRect.right + gap));
+      document.documentElement.style.setProperty('--header-logo-offset', `${offset}px`);
+    };
+    const raf = requestAnimationFrame(updateHeaderLogoOffset);
+    const timeout = window.setTimeout(updateHeaderLogoOffset, 350);
+    window.addEventListener('resize', updateHeaderLogoOffset);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timeout);
+      window.removeEventListener('resize', updateHeaderLogoOffset);
+    };
+  }, [isBreadcrumbSticky]);
+
   useEffect(() => {
     if (slug) {
       loadPost();
@@ -82,10 +166,18 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
   async function loadPost() {
     try {
       setLoading(true);
-      const data = await fetchPost(slug);
+      const [data, commentsData, postsData] = await Promise.all([
+        fetchPost(slug),
+        fetchComments(slug),
+        fetchPosts()
+      ]);
       setPost(data);
-      const commentsData = await fetchComments(slug);
       setComments(commentsData);
+      // Sort posts by date and filter out drafts
+      const publishedPosts = postsData
+        .filter(p => p.draft !== true && p.draft !== 'true')
+        .sort((a, b) => new Date(b.pubDate).valueOf() - new Date(a.pubDate).valueOf());
+      setAllPosts(publishedPosts);
       setError('');
     } catch (err) {
       setError(lang === 'zh' ? '加载文章失败' : 'Failed to load post');
@@ -107,7 +199,10 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
 
     setIsSubmitting(true);
     try {
-      const comment = await apiSubmitComment(slug, newComment.trim(), visitorName, visitorColor);
+      // Use author identity if admin, otherwise use anonymous visitor identity
+      const commentAuthor = isAdmin ? authorName : visitorName;
+      const commentColor = isAdmin ? '#8b5cf6' : visitorColor;
+      const comment = await apiSubmitComment(slug, newComment.trim(), commentAuthor, commentColor, isAdmin);
       setComments(prev => [...prev, comment]);
       setNewComment('');
     } catch (error) {
@@ -164,6 +259,35 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
     return Array.from(userMap.entries()).map(([name, color]) => ({ name, color }));
   }, [comments, visitorName, visitorColor]);
 
+  // Calculate previous and next posts
+  const { prevPost, nextPost } = useMemo(() => {
+    if (!post || allPosts.length === 0) return { prevPost: null, nextPost: null };
+    const currentIndex = allPosts.findIndex(p => p.slug === post.slug);
+    if (currentIndex === -1) return { prevPost: null, nextPost: null };
+    return {
+      prevPost: currentIndex < allPosts.length - 1 ? allPosts[currentIndex + 1] : null,
+      nextPost: currentIndex > 0 ? allPosts[currentIndex - 1] : null,
+    };
+  }, [post, allPosts]);
+
+  // Calculate related posts based on matching tags
+  const relatedPosts = useMemo(() => {
+    if (!post || allPosts.length === 0) return [];
+    const currentTags = new Set(post.tags || []);
+    if (currentTags.size === 0) return [];
+
+    return allPosts
+      .filter(p => p.slug !== post.slug)
+      .map(p => ({
+        post: p,
+        matchCount: (p.tags || []).filter(tag => currentTags.has(tag)).length
+      }))
+      .filter(item => item.matchCount > 0)
+      .sort((a, b) => b.matchCount - a.matchCount)
+      .slice(0, 3)
+      .map(item => item.post);
+  }, [post, allPosts]);
+
   // Loading state
   if (loading) {
     return (
@@ -205,33 +329,126 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
     );
   }
 
-  const catStyle = categoryStyles[post.category] || { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' };
+  const catStyle = categoryStyles[post.category] || { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200', accent: 'bg-slate-500' };
+  const readingTime = calculateReadingTime(post.content);
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Header-embedded breadcrumb - appears when scrolling, positioned after compressed logo */}
+      {isBreadcrumbSticky && (
+        <div
+          className="fixed top-0 z-50 h-16 flex items-center pointer-events-none animate-breadcrumb-slide-in"
+          style={{ left: 'var(--header-logo-offset, 0px)' }}
+        >
+          <nav
+            className="flex items-center gap-2 text-sm pointer-events-auto h-full pr-4"
+            style={{ maxWidth: 'calc(100vw - var(--header-logo-offset, 0px) - 16px)' }}
+            aria-label="Breadcrumb"
+          >
+              <a
+                href={`${basePath}/`}
+                className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+              </a>
+              <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <a
+                href={`${basePath}/blog`}
+                className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              >
+                {lang === 'zh' ? '博客' : 'Blog'}
+              </a>
+              <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span className="text-slate-700 dark:text-slate-300 font-medium truncate max-w-[200px] sm:max-w-xs">
+                {post.title}
+              </span>
+          </nav>
+        </div>
+      )}
+
+      {/* Original Breadcrumbs - visible initially, fades when header version appears */}
+      <div
+        ref={breadcrumbRef}
+        className={`sticky top-16 z-40 py-3 mb-6 transition-opacity duration-300 ${
+          isBreadcrumbSticky ? 'opacity-0 pointer-events-none' : 'opacity-100 bg-transparent'
+        }`}
+        style={{ marginLeft: 'calc(-50vw + 50%)', marginRight: 'calc(-50vw + 50%)', paddingLeft: 'calc(50vw - 50%)', paddingRight: 'calc(50vw - 50%)' }}
+      >
+        <nav className="flex items-center gap-2 text-sm" aria-label="Breadcrumb">
+          <a
+            href={`${basePath}/`}
+            className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </a>
+          <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          <a
+            href={`${basePath}/blog`}
+            className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+          >
+            {lang === 'zh' ? '博客' : 'Blog'}
+          </a>
+          <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          <span className="text-slate-700 dark:text-slate-300 font-medium truncate max-w-[200px] sm:max-w-xs">
+            {post.title}
+          </span>
+        </nav>
+      </div>
+
+      {/* Decorative Hero Background */}
+      <div className="absolute inset-x-0 top-0 h-[400px] overflow-hidden pointer-events-none -z-10">
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-50 via-slate-50/80 to-transparent dark:from-slate-900 dark:via-slate-900/80" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-100 dark:bg-blue-900/20 rounded-full blur-3xl opacity-60" />
+        <div className="absolute top-20 right-1/4 w-80 h-80 bg-purple-100 dark:bg-purple-900/20 rounded-full blur-3xl opacity-40" />
+        <div className="absolute -top-10 right-1/3 w-64 h-64 bg-amber-100 dark:bg-amber-900/20 rounded-full blur-3xl opacity-30" />
+      </div>
+
       <div className="flex gap-12">
         {/* Main Content */}
         <article className="flex-1 min-w-0">
           {/* Header */}
           <header className="mb-10 animate-fade-in">
-            {/* Back link */}
-            <a
-              href={`${basePath}/blog`}
-              className="inline-flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors mb-8 group"
-            >
-              <svg className="w-4 h-4 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              {lang === 'zh' ? '返回文章列表' : 'Back to articles'}
-            </a>
-
-            {/* Meta info */}
+            {/* Meta info - Enhanced */}
             <div className="flex flex-wrap items-center gap-3 mb-6">
-              <span className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full ${catStyle.bg} ${catStyle.text} ${catStyle.border} border`}>
-                {t(`category.${post.category}` as keyof typeof ui.zh)}
-              </span>
+              {/* Category with accent bar */}
+              <div className="flex items-center gap-2">
+                <div className={`w-1 h-5 rounded-full ${catStyle.accent}`} />
+                <span className={`inline-flex items-center px-3 py-1 text-xs font-medium rounded-full ${catStyle.bg} ${catStyle.text} ${catStyle.border} border`}>
+                  {getCategoryName(post.category)}
+                </span>
+              </div>
+
               <span className="text-slate-300 dark:text-slate-600">|</span>
-              <time className="text-sm text-slate-500 dark:text-slate-400">{formatDate(post.pubDate)}</time>
+
+              {/* Date with icon */}
+              <div className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <time>{formatDate(post.pubDate)}</time>
+              </div>
+
+              <span className="text-slate-300 dark:text-slate-600">|</span>
+
+              {/* Reading time with icon */}
+              <div className="flex items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>{lang === 'zh' ? `${readingTime} 分钟阅读` : `${readingTime} min read`}</span>
+              </div>
             </div>
 
             {/* Title */}
@@ -244,32 +461,45 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
               {post.description}
             </p>
 
-            {/* Tags */}
+            {/* Tags - Enhanced */}
             {post.tags && post.tags.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {post.tags.map(tag => (
-                  <span key={tag} className="text-sm text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-default">
-                    #{tag}
-                  </span>
+                  <a
+                    key={tag}
+                    href={`${basePath}/blog?tag=${encodeURIComponent(tag)}`}
+                    className="inline-flex items-center gap-1 px-3 py-1 text-sm bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                    </svg>
+                    {tag}
+                  </a>
                 ))}
               </div>
             )}
 
             {/* Divider */}
-            <div className="mt-10 h-px bg-gradient-to-r from-slate-200 via-slate-300 to-slate-200 dark:from-slate-700 dark:via-slate-600 dark:to-slate-700" />
+            <div className="mt-10 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent dark:via-slate-600" />
           </header>
 
           {/* Content */}
           <div className="prose-article mb-20 animate-fade-in" style={{ animationDelay: '0.1s' }}>
             <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeSlug]}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeSlug, rehypeRaw, rehypeKatex]}
               components={{
                 code({ node, className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || '');
                   const codeString = String(children).replace(/\n$/, '');
                   const hasNewlines = codeString.includes('\n');
                   const isInline = !match && !className && !hasNewlines;
+                  const language = match?.[1]?.toLowerCase();
+
+                  // Handle mermaid diagrams
+                  if (language === 'mermaid') {
+                    return <MermaidBlock>{codeString}</MermaidBlock>;
+                  }
 
                   if (isInline) {
                     return (
@@ -294,6 +524,142 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
             </ReactMarkdown>
           </div>
 
+          {/* Article Footer */}
+          <div className="mb-16 animate-fade-in" style={{ animationDelay: '0.15s' }}>
+            {/* End marker */}
+            <div className="flex items-center justify-center gap-4 mb-10">
+              <div className="flex-1 h-px bg-gradient-to-r from-transparent to-slate-200 dark:to-slate-700" />
+              <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                <span className="text-sm font-medium">
+                  {lang === 'zh' ? '感谢阅读' : 'Thanks for reading'}
+                </span>
+              </div>
+              <div className="flex-1 h-px bg-gradient-to-l from-transparent to-slate-200 dark:to-slate-700" />
+            </div>
+
+            {/* Action buttons */}
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+              <button
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+                {lang === 'zh' ? '返回顶部' : 'Back to top'}
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  {lang === 'zh' ? '觉得有用？' : 'Found it useful?'}
+                </span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.href);
+                    showToast(lang === 'zh' ? '链接已复制！' : 'Link copied!', 'success');
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-900 dark:bg-slate-100 dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white rounded-lg transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                  {lang === 'zh' ? '分享文章' : 'Share'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Previous / Next Navigation */}
+          {(prevPost || nextPost) && (
+            <div className="mb-12 animate-fade-in" style={{ animationDelay: '0.2s' }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Previous Post */}
+                {prevPost ? (
+                  <a
+                    href={`${basePath}/blog/${prevPost.slug}`}
+                    className="group p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all"
+                  >
+                    <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mb-2">
+                      <svg className="w-4 h-4 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                      <span>{lang === 'zh' ? '上一篇' : 'Previous'}</span>
+                    </div>
+                    <h4 className="font-medium text-slate-900 dark:text-white line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      {prevPost.title}
+                    </h4>
+                  </a>
+                ) : (
+                  <div />
+                )}
+
+                {/* Next Post */}
+                {nextPost ? (
+                  <a
+                    href={`${basePath}/blog/${nextPost.slug}`}
+                    className="group p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all text-right"
+                  >
+                    <div className="flex items-center justify-end gap-2 text-sm text-slate-500 dark:text-slate-400 mb-2">
+                      <span>{lang === 'zh' ? '下一篇' : 'Next'}</span>
+                      <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                    <h4 className="font-medium text-slate-900 dark:text-white line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      {nextPost.title}
+                    </h4>
+                  </a>
+                ) : (
+                  <div />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Related Posts */}
+          {relatedPosts.length > 0 && (
+            <div className="mb-12 animate-fade-in" style={{ animationDelay: '0.25s' }}>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                {lang === 'zh' ? '相关推荐' : 'Related Posts'}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {relatedPosts.map(relatedPost => {
+                  const relatedCatStyle = categoryStyles[relatedPost.category] || { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200', accent: 'bg-slate-500' };
+                  return (
+                    <a
+                      key={relatedPost.slug}
+                      href={`${basePath}/blog/${relatedPost.slug}`}
+                      className="group p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${relatedCatStyle.bg} ${relatedCatStyle.text}`}>
+                          {getCategoryName(relatedPost.category)}
+                        </span>
+                      </div>
+                      <h4 className="font-medium text-slate-900 dark:text-white line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors text-sm">
+                        {relatedPost.title}
+                      </h4>
+                      {relatedPost.tags && relatedPost.tags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {relatedPost.tags.slice(0, 2).map(tag => (
+                            <span key={tag} className="text-[10px] text-slate-400 dark:text-slate-500">
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Comments Section */}
           <section className="mt-16 pt-10 border-t border-slate-200 dark:border-slate-700 animate-fade-in" style={{ animationDelay: '0.2s' }}>
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-8 flex items-center gap-3">
@@ -308,18 +674,40 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
             </h2>
 
             {/* Visitor identity */}
-            <div className="mb-6 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700">
+            <div className="mb-6 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
               <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-medium text-sm shadow-sm"
-                  style={{ backgroundColor: visitorColor }}
-                >
-                  {visitorName.charAt(0)}
-                </div>
-                <div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{t('comment.identity')}</p>
-                  <p className="font-medium" style={{ color: visitorColor }}>{visitorName}</p>
-                </div>
+                {isAdmin ? (
+                  <a
+                    href={lang === 'zh' ? '/about' : '/en/about'}
+                    className="flex items-center gap-3 group"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-medium text-sm shadow-sm group-hover:shadow-md transition-shadow">
+                      {authorName.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">{t('comment.identity')}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{authorName}</p>
+                        <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded">
+                          {lang === 'zh' ? '作者' : 'Author'}
+                        </span>
+                      </div>
+                    </div>
+                  </a>
+                ) : (
+                  <>
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-medium text-sm shadow-sm"
+                      style={{ backgroundColor: visitorColor }}
+                    >
+                      {visitorName.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">{t('comment.identity')}</p>
+                      <p className="font-medium" style={{ color: visitorColor }}>{visitorName}</p>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -379,16 +767,21 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
                   style={{ animationDelay: `${index * 0.05}s` }}
                 >
                   <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-medium shrink-0 shadow-sm"
-                    style={{ backgroundColor: comment.authorColor }}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium shrink-0 shadow-sm ${comment.isAuthor ? 'bg-gradient-to-br from-blue-500 to-purple-600' : ''}`}
+                    style={comment.isAuthor ? undefined : { backgroundColor: comment.authorColor }}
                   >
                     {comment.author.charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="font-medium" style={{ color: comment.authorColor }}>
+                      <span className={`font-medium ${comment.isAuthor ? 'text-slate-900 dark:text-white' : ''}`} style={comment.isAuthor ? undefined : { color: comment.authorColor }}>
                         {comment.author}
                       </span>
+                      {comment.isAuthor && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded">
+                          {lang === 'zh' ? '作者' : 'Author'}
+                        </span>
+                      )}
                       <span className="text-slate-300 dark:text-slate-600">·</span>
                       <time className="text-sm text-slate-400 dark:text-slate-500">
                         {formatCommentDate(comment.createdAt)}
@@ -428,9 +821,86 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug }: Props) {
 
         {/* Table of Contents Sidebar */}
         <aside className="hidden lg:block w-64 shrink-0">
+          {/* Author Card */}
+          <a
+            href={lang === 'zh' ? '/about' : '/en/about'}
+            className="mb-6 flex items-center gap-3 group cursor-pointer"
+          >
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-md group-hover:shadow-lg transition-shadow">
+              {authorName.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{authorName}</span>
+                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded">
+                  {lang === 'zh' ? '作者' : 'Author'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {lang === 'zh' ? '热爱技术与分享' : 'Tech enthusiast'}
+              </p>
+            </div>
+          </a>
+
           <TableOfContents content={post.content} lang={lang} />
         </aside>
       </div>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+          <div
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg backdrop-blur-sm border transition-all duration-300 ${
+              toast.type === 'success'
+                ? 'bg-emerald-50/95 dark:bg-emerald-900/95 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200'
+                : toast.type === 'error'
+                ? 'bg-red-50/95 dark:bg-red-900/95 border-red-200 dark:border-red-700 text-red-800 dark:text-red-200'
+                : 'bg-blue-50/95 dark:bg-blue-900/95 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-200'
+            }`}
+          >
+            {toast.type === 'success' && (
+              <svg className="w-5 h-5 text-emerald-500 dark:text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            {toast.type === 'error' && (
+              <svg className="w-5 h-5 text-red-500 dark:text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+            {toast.type === 'info' && (
+              <svg className="w-5 h-5 text-blue-500 dark:text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <span className="text-sm font-medium">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            >
+              <svg className="w-4 h-4 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes slide-up {
+          from {
+            opacity: 0;
+            transform: translate(-50%, 20px);
+          }
+          to {
+            opacity: 1;
+            transform: translate(-50%, 0);
+          }
+        }
+        .animate-slide-up {
+          animation: slide-up 0.3s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 }

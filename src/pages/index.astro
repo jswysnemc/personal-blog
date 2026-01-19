@@ -20,7 +20,7 @@ const posts = (await getCollection('blog', ({ data }) => !data.draft))
 ---
 
 <BaseLayout title={t('nav.home')} description={t('home.description')} lang={lang}>
-  <div class="container-narrow">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
     <section class="mb-16">
       <h1 class="text-5xl font-bold text-primary-900 mb-6 leading-tight">
         {t('home.welcome')}
