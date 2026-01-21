@@ -172,6 +172,7 @@ export default function AdminPanel({ lang = 'zh' }: Props) {
     );
   }
 
+  // Logged in - show BlogEditor directly with header
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Top Navigation Bar */}
@@ -228,7 +229,7 @@ export default function AdminPanel({ lang = 'zh' }: Props) {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content - BlogEditor */}
       <main className="max-w-6xl mx-auto px-6 py-8">
         <BlogEditor lang={lang} />
       </main>

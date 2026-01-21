@@ -1,13 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import { createPortal } from 'react-dom';
-import mermaid from 'mermaid';
+import Vditor from 'vditor';
 
 interface Props {
   children: string;
 }
 
-let diagramId = 0;
-let initialized = false;
 const MERMAID_FONT_FAMILY = '"Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", "Heiti SC", "Outfit", ui-sans-serif, system-ui, sans-serif';
 const MERMAID_PADDING = 48;
 const MIN_SCALE = 0.5;
@@ -19,10 +17,33 @@ const TARGET_NODE_HEIGHT = 36;
 const FS_MIN_ZOOM = 0.25;
 const FS_MAX_ZOOM = 4;
 const FS_ZOOM_STEP = 0.25;
+const VDITOR_CDN = '/vditor';
 
-export default function MermaidBlock({ children }: Props) {
+function useIsDarkMode(): boolean {
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const checkDark = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+
+    checkDark();
+    const observer = new MutationObserver(checkDark);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  return isDark;
+}
+
+const MermaidBlock = memo(function MermaidBlock({ children }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgContainerRef = useRef<HTMLDivElement>(null);
+  const lastContainerWidth = useRef<number | null>(null);
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -30,7 +51,7 @@ export default function MermaidBlock({ children }: Props) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [svgSize, setSvgSize] = useState({ width: 0, height: 0 });
-  const hasFontRerenderedRef = useRef(false);
+  const isDark = useIsDarkMode();
 
   // Fullscreen zoom and pan state
   const [fsZoom, setFsZoom] = useState(1);
@@ -179,93 +200,59 @@ export default function MermaidBlock({ children }: Props) {
   }, [svg, svgSize]);
 
   useEffect(() => {
-    // Initialize mermaid only once
-    if (!initialized) {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: 'neutral',
-        securityLevel: 'loose',
-        fontFamily: MERMAID_FONT_FAMILY,
-        fontSize: 16,
-        themeVariables: {
-          fontFamily: MERMAID_FONT_FAMILY,
-        },
-        flowchart: {
-          useMaxWidth: false,
-          htmlLabels: true,
-          curve: 'basis',
-          padding: 20,
-          nodeSpacing: 50,
-          rankSpacing: 50,
-        },
-        sequence: {
-          useMaxWidth: false,
-          diagramMarginX: 50,
-          diagramMarginY: 30,
-          actorMargin: 100,
-          width: 200,
-          height: 65,
-          boxMargin: 15,
-          boxTextMargin: 10,
-          noteMargin: 20,
-          messageMargin: 50,
-          mirrorActors: true,
-          showSequenceNumbers: false,
-        },
-        gantt: {
-          useMaxWidth: false,
-          leftPadding: 100,
-          barHeight: 30,
-          barGap: 8,
-          topPadding: 60,
-          gridLineStartPadding: 40,
-          fontSize: 14,
-          sectionFontSize: 16,
-        },
-        pie: {
-          useMaxWidth: false,
-          textPosition: 0.75,
-        },
-        stateDiagram: {
-          useMaxWidth: false,
-          nodeSpacing: 50,
-          rankSpacing: 50,
-        },
-        classDiagram: {
-          useMaxWidth: false,
-        },
-      });
-      initialized = true;
+    let cancelled = false;
+    let frameId = 0;
+    const code = children.trim();
+
+    setError('');
+    setSvg('');
+    setSvgSize({ width: 0, height: 0 });
+
+    if (!code) {
+      setLoading(false);
+      return () => {};
     }
 
-    hasFontRerenderedRef.current = false;
+    setLoading(true);
+    const renderRoot = document.createElement('div');
+    const mermaidElement = document.createElement('div');
+    mermaidElement.className = 'language-mermaid';
+    mermaidElement.textContent = code;
+    renderRoot.appendChild(mermaidElement);
 
-    const renderDiagram = async (fromFontReady = false) => {
-      if (!containerRef.current) return;
+    Vditor.mermaidRender(renderRoot, VDITOR_CDN, isDark ? 'dark' : 'light');
 
-      try {
-        setLoading(true);
-        setError('');
-        const id = `mermaid-${++diagramId}-${Date.now()}`;
-        const { svg: renderedSvg } = await mermaid.render(id, children.trim());
-        setSvg(renderedSvg);
-        if (!fromFontReady && 'fonts' in document && document.fonts?.ready && !hasFontRerenderedRef.current) {
-          document.fonts.ready.then(() => {
-            if (hasFontRerenderedRef.current) return;
-            hasFontRerenderedRef.current = true;
-            renderDiagram(true);
-          });
-        }
-      } catch (err) {
-        console.error('Mermaid render error:', err);
-        setError(err instanceof Error ? err.message : 'Failed to render diagram');
-      } finally {
+    const start = performance.now();
+    const checkSvg = () => {
+      if (cancelled) return;
+      const svgElement = mermaidElement.querySelector('svg');
+      if (svgElement) {
+        setSvg(svgElement.outerHTML);
         setLoading(false);
+        return;
       }
+      if (performance.now() - start > 3000) {
+        setLoading(false);
+        setError('Failed to render diagram');
+        return;
+      }
+      frameId = requestAnimationFrame(checkSvg);
     };
 
-    renderDiagram();
-  }, [children]);
+    frameId = requestAnimationFrame(checkSvg);
+
+    return () => {
+      cancelled = true;
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+      }
+    };
+  }, [children, isDark]);
+
+  useEffect(() => {
+    if (!svgContainerRef.current) return;
+    svgContainerRef.current.innerHTML = svg;
+  }, [svg]);
 
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -285,12 +272,17 @@ export default function MermaidBlock({ children }: Props) {
   // Calculate scale after SVG is rendered
   useEffect(() => {
     if (!svg || !svgContainerRef.current || !containerRef.current) return;
+    lastContainerWidth.current = null;
 
     const calculateScale = () => {
       const svgElement = svgContainerRef.current?.querySelector('svg');
       if (!svgElement) return;
 
       const containerWidth = containerRef.current?.clientWidth || 600;
+      if (lastContainerWidth.current !== null && Math.abs(lastContainerWidth.current - containerWidth) < 0.5) {
+        return;
+      }
+      lastContainerWidth.current = containerWidth;
       const viewBox = svgElement.viewBox?.baseVal;
       const viewBoxWidth = viewBox?.width || 0;
       const viewBoxHeight = viewBox?.height || 0;
@@ -353,9 +345,18 @@ export default function MermaidBlock({ children }: Props) {
       const fitScale = availableWidth / svgWidth;
       const targetScale = visualScale ?? fitScale;
       const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(fitScale, targetScale)));
-      setScale(Number.isFinite(nextScale) ? nextScale : 1);
+      if (Number.isFinite(nextScale)) {
+        setScale(prev => (Math.abs(prev - nextScale) > 0.002 ? nextScale : prev));
+      } else {
+        setScale(prev => (prev !== 1 ? 1 : prev));
+      }
       if (Number.isFinite(svgWidth) && Number.isFinite(svgHeight)) {
-        setSvgSize({ width: svgWidth, height: svgHeight });
+        setSvgSize(prev => {
+          if (Math.abs(prev.width - svgWidth) < 0.5 && Math.abs(prev.height - svgHeight) < 0.5) {
+            return prev;
+          }
+          return { width: svgWidth, height: svgHeight };
+        });
       }
     };
 
@@ -370,9 +371,9 @@ export default function MermaidBlock({ children }: Props) {
     const resizeObserver = typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => calculateScale())
       : null;
-    const svgElement = svgContainerRef.current?.querySelector('svg');
-    if (resizeObserver && svgElement) {
-      resizeObserver.observe(svgElement);
+    const containerElement = containerRef.current;
+    if (resizeObserver && containerElement) {
+      resizeObserver.observe(containerElement);
     }
     if ('fonts' in document && document.fonts?.ready) {
       document.fonts.ready.then(() => calculateScale());
@@ -657,7 +658,6 @@ export default function MermaidBlock({ children }: Props) {
                 style={{
                   width: svgSize.width ? `${svgSize.width * scale}px` : undefined,
                 }}
-                dangerouslySetInnerHTML={{ __html: svg }}
               />
             </div>
           )}
@@ -822,4 +822,6 @@ export default function MermaidBlock({ children }: Props) {
       `}</style>
     </>
   );
-}
+});
+
+export default MermaidBlock;

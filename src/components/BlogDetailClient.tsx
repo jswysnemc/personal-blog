@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -42,6 +42,52 @@ const calculateReadingTime = (content: string): number => {
   return Math.max(1, minutes);
 };
 
+const remarkPlugins = [remarkGfm, remarkMath];
+const rehypePlugins = [rehypeSlug, rehypeRaw, rehypeKatex];
+
+const MarkdownContent = memo(function MarkdownContent({ content }: { content: string }) {
+  const components = useMemo(() => ({
+    code({ node, className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      const codeString = String(children).replace(/\n$/, '');
+      const hasNewlines = codeString.includes('\n');
+      const isInline = !match && !className && !hasNewlines;
+      const language = match?.[1]?.toLowerCase();
+
+      if (language === 'mermaid') {
+        return <MermaidBlock>{codeString}</MermaidBlock>;
+      }
+
+      if (isInline) {
+        return (
+          <code {...props}>
+            {children}
+          </code>
+        );
+      }
+
+      return (
+        <CodeBlock language={match?.[1]}>
+          {codeString}
+        </CodeBlock>
+      );
+    },
+    pre({ children }: any) {
+      return <>{children}</>;
+    },
+  }), []);
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypePlugins}
+      components={components}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+});
+
 export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName = 'Author' }: Props) {
   const [slug, setSlug] = useState<string>(initialSlug || '');
   const [post, setPost] = useState<Post | null>(null);
@@ -62,6 +108,7 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName 
   // Breadcrumb sticky state
   const [isBreadcrumbSticky, setIsBreadcrumbSticky] = useState(false);
   const breadcrumbRef = useRef<HTMLDivElement>(null);
+  const stickyStateRef = useRef(false);
 
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -118,6 +165,10 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName 
         const rect = breadcrumbRef.current.getBoundingClientRect();
         // Header is 64px (top-16), so when breadcrumb top equals 64, it's sticky
         const isSticky = rect.top <= 64;
+        if (stickyStateRef.current === isSticky) {
+          return;
+        }
+        stickyStateRef.current = isSticky;
         setIsBreadcrumbSticky(isSticky);
 
         // Toggle body class for header animation coordination
@@ -138,7 +189,8 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName 
 
   useEffect(() => {
     if (!isBreadcrumbSticky) return;
-    const updateHeaderLogoOffset = () => {
+    const updateHeaderOffsets = () => {
+      // Calculate logo offset (left boundary)
       const logo = document.querySelector('.header-logo');
       if (!logo) return;
       const icon = logo.querySelector('svg');
@@ -146,14 +198,24 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName 
       const gap = 12;
       const offset = Math.max(0, Math.round(logoRect.right + gap));
       document.documentElement.style.setProperty('--header-logo-offset', `${offset}px`);
+
+      // Calculate header buttons width (right boundary)
+      // Find the right-side nav items container
+      const rightNav = document.querySelector('header nav > div');
+      if (rightNav) {
+        const rightNavRect = rightNav.getBoundingClientRect();
+        const padding = 16;
+        const rightWidth = Math.max(0, Math.round(window.innerWidth - rightNavRect.left + padding));
+        document.documentElement.style.setProperty('--header-buttons-width', `${rightWidth}px`);
+      }
     };
-    const raf = requestAnimationFrame(updateHeaderLogoOffset);
-    const timeout = window.setTimeout(updateHeaderLogoOffset, 350);
-    window.addEventListener('resize', updateHeaderLogoOffset);
+    const raf = requestAnimationFrame(updateHeaderOffsets);
+    const timeout = window.setTimeout(updateHeaderOffsets, 350);
+    window.addEventListener('resize', updateHeaderOffsets);
     return () => {
       cancelAnimationFrame(raf);
       window.clearTimeout(timeout);
-      window.removeEventListener('resize', updateHeaderLogoOffset);
+      window.removeEventListener('resize', updateHeaderOffsets);
     };
   }, [isBreadcrumbSticky]);
 
@@ -338,34 +400,33 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName 
       {isBreadcrumbSticky && (
         <div
           className="fixed top-0 z-50 h-16 flex items-center pointer-events-none animate-breadcrumb-slide-in"
-          style={{ left: 'var(--header-logo-offset, 0px)' }}
+          style={{ left: 'var(--header-logo-offset, 0px)', right: 'var(--header-buttons-width, 200px)' }}
         >
           <nav
-            className="flex items-center gap-2 text-sm pointer-events-auto h-full pr-4"
-            style={{ maxWidth: 'calc(100vw - var(--header-logo-offset, 0px) - 16px)' }}
+            className="flex items-center gap-2 text-sm pointer-events-auto h-full pr-4 w-full"
             aria-label="Breadcrumb"
           >
               <a
                 href={`${basePath}/`}
-                className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                 </svg>
               </a>
-              <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0 hidden sm:block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
               <a
                 href={`${basePath}/blog`}
-                className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors shrink-0 hidden sm:block"
               >
                 {lang === 'zh' ? '博客' : 'Blog'}
               </a>
-              <svg className="w-4 h-4 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 text-slate-300 dark:text-slate-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-              <span className="text-slate-700 dark:text-slate-300 font-medium truncate max-w-[200px] sm:max-w-xs">
+              <span className="text-slate-700 dark:text-slate-300 font-medium truncate min-w-0">
                 {post.title}
               </span>
           </nav>
@@ -485,43 +546,7 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName 
 
           {/* Content */}
           <div className="prose-article mb-20 animate-fade-in" style={{ animationDelay: '0.1s' }}>
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeSlug, rehypeRaw, rehypeKatex]}
-              components={{
-                code({ node, className, children, ...props }) {
-                  const match = /language-(\w+)/.exec(className || '');
-                  const codeString = String(children).replace(/\n$/, '');
-                  const hasNewlines = codeString.includes('\n');
-                  const isInline = !match && !className && !hasNewlines;
-                  const language = match?.[1]?.toLowerCase();
-
-                  // Handle mermaid diagrams
-                  if (language === 'mermaid') {
-                    return <MermaidBlock>{codeString}</MermaidBlock>;
-                  }
-
-                  if (isInline) {
-                    return (
-                      <code {...props}>
-                        {children}
-                      </code>
-                    );
-                  }
-
-                  return (
-                    <CodeBlock language={match?.[1]}>
-                      {codeString}
-                    </CodeBlock>
-                  );
-                },
-                pre({ children }) {
-                  return <>{children}</>;
-                },
-              }}
-            >
-              {post.content}
-            </ReactMarkdown>
+            <MarkdownContent content={post.content} />
           </div>
 
           {/* Article Footer */}

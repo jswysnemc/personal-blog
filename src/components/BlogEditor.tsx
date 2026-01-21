@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { fetchPosts, createPost, updatePost, deletePost, type Post } from '../lib/api';
 import { isAdminLoggedIn } from '../lib/auth';
 import { ui, type Lang } from '../lib/i18n';
-import { marked } from 'marked';
-import MarkdownToolbar from './MarkdownToolbar';
-import ArticleCard from './ArticleCard';
+import { MarkdownEditor, type EditorMode } from './editor';
 import ArticlesHeader from './ArticlesHeader';
 
 interface Props {
   lang?: Lang;
+  initialPost?: Partial<Post> | null;
+  onBack?: () => void;
+  fullscreenMode?: boolean;
 }
 
 const DEFAULT_CATEGORIES = ['tech', 'life', 'thoughts', 'tutorial', 'reading'] as const;
@@ -21,152 +22,44 @@ const categoryColors: Record<string, { bg: string; text: string; dot: string }> 
   reading: { bg: 'bg-rose-50 dark:bg-rose-900/30', text: 'text-rose-700 dark:text-rose-300', dot: 'bg-rose-500' },
 };
 
-export default function BlogEditor({ lang = 'zh' }: Props) {
+export default function BlogEditor({ lang = 'zh', initialPost, onBack, fullscreenMode = false }: Props) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [view, setView] = useState<'list' | 'edit' | 'categories'>('list');
-  const [editingPost, setEditingPost] = useState<Partial<Post> | null>(null);
+  const [view, setView] = useState<'list' | 'edit' | 'categories'>(initialPost ? 'edit' : 'list');
+  const [editingPost, setEditingPost] = useState<Partial<Post> | null>(initialPost || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [editorMode, setEditorMode] = useState<'source' | 'preview' | 'split'>('source');
+  const [editorMode, setEditorMode] = useState<EditorMode>('source');
   const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
   const [newCategory, setNewCategory] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
 
-  // Undo/Redo history
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [isUndoRedoAction, setIsUndoRedoAction] = useState(false);
-
   const t = (key: keyof typeof ui.zh) => ui[lang][key] || ui.zh[key];
   const isDraft = (draft?: boolean | string) => draft === true || draft === 'true';
 
-  // Calculate word and character count
-  const wordCount = (editingPost?.content || '').trim().split(/\s+/).filter(Boolean).length;
-  const charCount = (editingPost?.content || '').length;
-
-  // Undo/Redo functions
-  const canUndo = historyIndex > 0;
-  const canRedo = historyIndex < history.length - 1;
-
-  const handleUndo = () => {
-    if (canUndo) {
-      setIsUndoRedoAction(true);
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      setEditingPost(prev => ({ ...prev, content: history[newIndex] }));
-    }
-  };
-
-  const handleRedo = () => {
-    if (canRedo) {
-      setIsUndoRedoAction(true);
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      setEditingPost(prev => ({ ...prev, content: history[newIndex] }));
-    }
-  };
-
-  // Track content changes for history
-  useEffect(() => {
-    if (isUndoRedoAction) {
-      setIsUndoRedoAction(false);
-      return;
-    }
-
-    if (view === 'edit' && editingPost?.content !== undefined) {
-      const content = editingPost.content || '';
-
-      // Don't add to history if content hasn't changed
-      if (history[historyIndex] === content) return;
-
-      // Add to history and trim future history if we're in the middle
-      const newHistory = history.slice(0, historyIndex + 1);
-      newHistory.push(content);
-
-      // Limit history to last 50 entries
-      if (newHistory.length > 50) {
-        newHistory.shift();
-        setHistory(newHistory);
-        setHistoryIndex(newHistory.length - 1);
-      } else {
-        setHistory(newHistory);
-        setHistoryIndex(newHistory.length - 1);
-      }
-    }
-  }, [editingPost?.content, view]);
-
-  // Initialize history when entering edit mode
-  useEffect(() => {
-    if (view === 'edit') {
-      const initialContent = editingPost?.content || '';
-      setHistory([initialContent]);
-      setHistoryIndex(0);
-    }
-  }, [view]);
-
-  // Handle Markdown insertion at cursor position
-  const handleInsert = (text: string, cursorOffset: number = 0) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const currentContent = editingPost?.content || '';
-
-    const newContent = currentContent.substring(0, start) + text + currentContent.substring(end);
-    setEditingPost(prev => ({ ...prev, content: newContent }));
-
-    setTimeout(() => {
-      const newCursorPos = start + text.length + cursorOffset;
-      textarea.focus();
-      textarea.setSelectionRange(newCursorPos, newCursorPos);
-    }, 0);
-  };
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!textareaRef.current || view !== 'edit') return;
+      if (view !== 'edit') return;
 
-      if (e.ctrlKey || e.metaKey) {
-        switch (e.key.toLowerCase()) {
-          case 'z':
-            e.preventDefault();
-            if (e.shiftKey) {
-              handleRedo();
-            } else {
-              handleUndo();
-            }
-            break;
-          case 'y':
-            e.preventDefault();
-            handleRedo();
-            break;
-          case 'b':
-            if (editorMode === 'source') {
-              e.preventDefault();
-              handleInsert('**文本**', -3);
-            }
-            break;
-          case 'i':
-            if (editorMode === 'source') {
-              e.preventDefault();
-              handleInsert('*文本*', -2);
-            }
-            break;
-          case 's':
-            e.preventDefault();
-            handleSave();
-            break;
-        }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSave();
       }
 
       if (e.key === 'Escape' && isFullscreen) {
@@ -176,7 +69,7 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [view, editorMode, isFullscreen, editingPost, canUndo, canRedo]);
+  }, [view, isFullscreen]);
 
   useEffect(() => {
     setIsAdmin(isAdminLoggedIn());
@@ -234,11 +127,16 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
       setError(lang === 'zh' ? '无法删除默认分类' : 'Cannot delete default category');
       return;
     }
-    if (!confirm(lang === 'zh' ? `确定要删除分类"${cat}"吗？` : `Delete category "${cat}"?`)) {
-      return;
-    }
-    saveCategories(categories.filter(c => c !== cat));
-    setSuccess(lang === 'zh' ? '分类已删除' : 'Category deleted');
+    setConfirmDialog({
+      isOpen: true,
+      title: lang === 'zh' ? '删除分类' : 'Delete Category',
+      message: lang === 'zh' ? `确定要删除分类"${cat}"吗？` : `Delete category "${cat}"?`,
+      onConfirm: () => {
+        setConfirmDialog(null);
+        saveCategories(categories.filter(c => c !== cat));
+        setSuccess(lang === 'zh' ? '分类已删除' : 'Category deleted');
+      }
+    });
   }
 
   async function loadPosts() {
@@ -283,9 +181,13 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
       }
 
       setSuccess(lang === 'zh' ? '文章已保存!' : 'Post saved successfully!');
-      setView('list');
-      setEditingPost(null);
-      loadPosts();
+      if (fullscreenMode && onBack) {
+        onBack();
+      } else {
+        setView('list');
+        setEditingPost(null);
+        loadPosts();
+      }
     } catch {
       setError(lang === 'zh' ? '保存失败,请确保服务器正在运行' : 'Failed to save. Make sure the server is running.');
     }
@@ -294,17 +196,21 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
   }
 
   async function handleDelete(slug: string) {
-    if (!confirm(lang === 'zh' ? '确定要删除这篇文章吗？此操作不可撤销。' : 'Are you sure you want to delete this post? This cannot be undone.')) {
-      return;
-    }
-
-    try {
-      await deletePost(slug);
-      loadPosts();
-      setSuccess(lang === 'zh' ? '文章已删除' : 'Post deleted');
-    } catch {
-      setError(lang === 'zh' ? '删除失败' : 'Failed to delete');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: lang === 'zh' ? '删除文章' : 'Delete Post',
+      message: lang === 'zh' ? '确定要删除这篇文章吗？此操作不可撤销。' : 'Are you sure you want to delete this post? This cannot be undone.',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          await deletePost(slug);
+          loadPosts();
+          setSuccess(lang === 'zh' ? '文章已删除' : 'Post deleted');
+        } catch {
+          setError(lang === 'zh' ? '删除失败' : 'Failed to delete');
+        }
+      }
+    });
   }
 
   if (!isAdmin) {
@@ -429,9 +335,20 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
 
   // Edit View
   if (view === 'edit') {
-    const containerClass = isFullscreen
+    const containerClass = (isFullscreen || fullscreenMode)
       ? 'fixed inset-0 z-50 bg-white dark:bg-slate-900'
       : 'bg-white dark:bg-slate-800 rounded-2xl shadow-sm dark:shadow-slate-900/50 border border-slate-200 dark:border-slate-700';
+
+    const handleBackClick = () => {
+      if (fullscreenMode && onBack) {
+        onBack();
+      } else {
+        setView('list');
+        setEditingPost(null);
+        setError('');
+        setIsFullscreen(false);
+      }
+    };
 
     return (
       <div className={`${containerClass} overflow-hidden flex flex-col`}>
@@ -440,7 +357,7 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => { setView('list'); setEditingPost(null); setError(''); setIsFullscreen(false); }}
+                onClick={handleBackClick}
                 className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
                 title={lang === 'zh' ? '返回' : 'Back'}
               >
@@ -476,28 +393,7 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
               </button>
               <div className="w-px h-6 bg-slate-200 dark:bg-slate-700" />
               <button
-                onClick={handleUndo}
-                disabled={!canUndo}
-                className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                title={lang === 'zh' ? '撤销 (Ctrl+Z)' : 'Undo (Ctrl+Z)'}
-              >
-                <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                </svg>
-              </button>
-              <button
-                onClick={handleRedo}
-                disabled={!canRedo}
-                className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                title={lang === 'zh' ? '重做 (Ctrl+Y / Ctrl+Shift+Z)' : 'Redo (Ctrl+Y / Ctrl+Shift+Z)'}
-              >
-                <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
-                </svg>
-              </button>
-              <div className="w-px h-6 bg-slate-200 dark:bg-slate-700" />
-              <button
-                onClick={() => { setView('list'); setEditingPost(null); setError(''); setIsFullscreen(false); }}
+                onClick={handleBackClick}
                 className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
               >
                 {lang === 'zh' ? '取消' : 'Cancel'}
@@ -541,49 +437,31 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
               </div>
             )}
 
-            {/* Title */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                {lang === 'zh' ? '文章标题' : 'Title'}
-              </label>
-              <input
-                type="text"
-                value={editingPost?.title || ''}
-                onChange={e => setEditingPost(prev => ({ ...prev, title: e.target.value }))}
-                className="w-full px-4 py-3 text-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl
-                           focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800
-                           transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-white"
-                placeholder={lang === 'zh' ? '输入一个吸引人的标题...' : 'Enter an engaging title...'}
-              />
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                {lang === 'zh' ? '文章描述' : 'Description'}
-              </label>
-              <textarea
-                value={editingPost?.description || ''}
-                onChange={e => setEditingPost(prev => ({ ...prev, description: e.target.value }))}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl resize-none
-                           focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800
-                           transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-white"
-                rows={2}
-                placeholder={lang === 'zh' ? '简短描述文章内容，将显示在列表页...' : 'Brief description of the post...'}
-              />
-            </div>
-
-            {/* Category & Tags */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Title & Description - Compact Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+                  {lang === 'zh' ? '标题' : 'Title'}
+                </label>
+                <input
+                  type="text"
+                  value={editingPost?.title || ''}
+                  onChange={e => setEditingPost(prev => ({ ...prev, title: e.target.value }))}
+                  className="w-full px-3 py-2 text-base bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg
+                             focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800
+                             transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-white"
+                  placeholder={lang === 'zh' ? '输入标题...' : 'Enter title...'}
+                />
+              </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
                   {lang === 'zh' ? '分类' : 'Category'}
                 </label>
                 <div className="relative">
                   <select
                     value={editingPost?.category || 'tech'}
                     onChange={e => setEditingPost(prev => ({ ...prev, category: e.target.value }))}
-                    className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl appearance-none
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg appearance-none
                                focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800
                                transition-all cursor-pointer text-slate-900 dark:text-white"
                   >
@@ -593,27 +471,44 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
                       return <option key={cat} value={cat}>{displayName}</option>;
                     })}
                   </select>
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <svg className="w-5 h-5 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
                 </div>
               </div>
+            </div>
 
+            {/* Description & Tags - Compact Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+                  {lang === 'zh' ? '描述' : 'Description'}
+                </label>
+                <input
+                  type="text"
+                  value={editingPost?.description || ''}
+                  onChange={e => setEditingPost(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg
+                             focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800
+                             transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-white"
+                  placeholder={lang === 'zh' ? '简短描述...' : 'Brief description...'}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
                   {lang === 'zh' ? '标签' : 'Tags'}
                   <span className="text-slate-400 dark:text-slate-500 font-normal ml-1">
-                    ({lang === 'zh' ? '按 Enter 添加' : 'press Enter to add'})
+                    (Enter {lang === 'zh' ? '添加' : 'to add'})
                   </span>
                 </label>
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2 min-h-[2.5rem] p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-400 dark:focus-within:border-blue-500 focus-within:bg-white dark:focus-within:bg-slate-800 transition-all">
+                  <div className="flex flex-wrap gap-1.5 flex-1">
                     {(editingPost?.tags || []).map((tag, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-sm rounded-lg"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-xs rounded"
                       >
                         {tag}
                         <button
@@ -623,173 +518,69 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
                           }))}
                           className="hover:text-blue-900 dark:hover:text-blue-100 transition-colors"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </button>
                       </span>
                     ))}
+                    <input
+                      type="text"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                          e.preventDefault();
+                          const newTag = e.currentTarget.value.trim();
+                          setEditingPost(prev => ({
+                            ...prev,
+                            tags: [...(prev?.tags || []), newTag]
+                          }));
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                      className="flex-1 min-w-[80px] py-0.5 bg-transparent border-none focus:outline-none focus:ring-0 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-white text-sm"
+                      placeholder={editingPost?.tags?.length ? '' : (lang === 'zh' ? '输入标签...' : 'Add tag...')}
+                    />
                   </div>
-                  <input
-                    type="text"
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                        e.preventDefault();
-                        const newTag = e.currentTarget.value.trim();
-                        setEditingPost(prev => ({
-                          ...prev,
-                          tags: [...(prev?.tags || []), newTag]
-                        }));
-                        e.currentTarget.value = '';
-                      }
-                    }}
-                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl
-                               focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800
-                               transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-white"
-                    placeholder={lang === 'zh' ? '输入标签并按 Enter' : 'Type a tag and press Enter'}
-                  />
                 </div>
               </div>
             </div>
 
-            {/* Draft Status */}
-            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
-              <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-slate-600 dark:text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-                <div>
-                  <div className="text-sm font-medium text-slate-900 dark:text-white">
-                    {lang === 'zh' ? '草稿状态' : 'Draft Status'}
-                  </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {isDraft(editingPost?.draft)
-                      ? (lang === 'zh' ? '此文章不会在博客列表中显示' : 'This post will not appear in the blog list')
-                      : (lang === 'zh' ? '此文章将公开显示' : 'This post will be publicly visible')}
-                  </div>
-                </div>
-              </div>
+            {/* Draft Toggle - Inline Compact */}
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setEditingPost(prev => ({
                   ...prev,
                   draft: !isDraft(prev?.draft)
                 }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                   isDraft(editingPost?.draft)
-                    ? 'bg-blue-600 dark:bg-blue-500'
-                    : 'bg-slate-300 dark:bg-slate-600'
+                    ? 'bg-amber-500 dark:bg-amber-500'
+                    : 'bg-emerald-500 dark:bg-emerald-500'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    isDraft(editingPost?.draft) ? 'translate-x-6' : 'translate-x-1'
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                    isDraft(editingPost?.draft) ? 'translate-x-4.5' : 'translate-x-1'
                   }`}
+                  style={{ transform: isDraft(editingPost?.draft) ? 'translateX(18px)' : 'translateX(4px)' }}
                 />
               </button>
+              <span className="text-sm text-slate-600 dark:text-slate-400">
+                {isDraft(editingPost?.draft)
+                  ? (lang === 'zh' ? '草稿 (不公开)' : 'Draft (hidden)')
+                  : (lang === 'zh' ? '已发布' : 'Published')}
+              </span>
             </div>
 
             {/* Content Editor */}
-            <div>
-              {/* Toolbar and Mode Toggle */}
-              <div className="flex items-center justify-between mb-3">
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                  {lang === 'zh' ? '文章内容' : 'Content'}
-                  <span className="text-slate-400 dark:text-slate-500 font-normal ml-1">(Markdown)</span>
-                </label>
-                <div className="flex items-center gap-3">
-                  {/* Word Count */}
-                  <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
-                    <span>{lang === 'zh' ? '字数' : 'Words'}: {wordCount}</span>
-                    <span>{lang === 'zh' ? '字符' : 'Chars'}: {charCount}</span>
-                  </div>
-                  {/* Mode Toggle */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setEditorMode('source')}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                        editorMode === 'source'
-                          ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                      }`}
-                      title={lang === 'zh' ? '源码模式' : 'Source mode'}
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => setEditorMode('split')}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                        editorMode === 'split'
-                          ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                      }`}
-                      title={lang === 'zh' ? '分屏模式' : 'Split mode'}
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4H5a2 2 0 00-2 2v14a2 2 0 002 2h4m0-18v18m0-18l10.5 0M9 22L19.5 22M14 4h5a2 2 0 012 2v14a2 2 0 01-2 2h-5" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => setEditorMode('preview')}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                        editorMode === 'preview'
-                          ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900'
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
-                      }`}
-                      title={lang === 'zh' ? '预览模式' : 'Preview mode'}
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Markdown Toolbar (only show in source/split mode) */}
-              {(editorMode === 'source' || editorMode === 'split') && (
-                <MarkdownToolbar onInsert={handleInsert} lang={lang} />
-              )}
-
-              {/* Editor Area */}
-              <div className={`${editorMode === 'split' ? 'grid grid-cols-2 gap-4' : ''}`}>
-                {/* Source Editor */}
-                {(editorMode === 'source' || editorMode === 'split') && (
-                  <div>
-                    <textarea
-                      ref={textareaRef}
-                      value={editingPost?.content || ''}
-                      onChange={e => setEditingPost(prev => ({ ...prev, content: e.target.value }))}
-                      className="w-full px-4 py-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl
-                                 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800
-                                 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 font-mono text-sm leading-relaxed text-slate-900 dark:text-white resize-y"
-                      style={{ minHeight: editorMode === 'split' ? '660px' : '600px' }}
-                      placeholder={lang === 'zh'
-                        ? '# 标题\n\n正文内容...\n\n## 子标题\n\n- 列表项\n- 列表项\n\n```javascript\nconst code = "示例代码";\n```'
-                        : '# Heading\n\nParagraph text...\n\n## Subheading\n\n- List item\n- List item\n\n```javascript\nconst code = "example";\n```'}
-                    />
-                  </div>
-                )}
-
-                {/* Preview */}
-                {(editorMode === 'preview' || editorMode === 'split') && (
-                  <div
-                    className={`px-4 py-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl
-                               prose prose-slate dark:prose-invert max-w-none overflow-auto ${editorMode === 'split' ? 'h-[660px]' : 'min-h-[500px]'}`}
-                    dangerouslySetInnerHTML={{ __html: marked(editingPost?.content || (lang === 'zh' ? '暂无内容预览' : 'No content to preview')) }}
-                  />
-                )}
-              </div>
-
-              {/* Keyboard Shortcuts Help */}
-              {editorMode !== 'preview' && (
-                <div className="mt-3 text-xs text-slate-400 dark:text-slate-500">
-                  {lang === 'zh' ? '快捷键' : 'Shortcuts'}: Ctrl+Z {lang === 'zh' ? '撤销' : 'undo'}, Ctrl+Y {lang === 'zh' ? '重做' : 'redo'}, Ctrl+B {lang === 'zh' ? '粗体' : 'bold'}, Ctrl+I {lang === 'zh' ? '斜体' : 'italic'}, Ctrl+S {lang === 'zh' ? '保存' : 'save'}, Esc {lang === 'zh' ? '退出全屏' : 'exit fullscreen'}
-                </div>
-              )}
-            </div>
+            <MarkdownEditor
+              value={editingPost?.content || ''}
+              onChange={(content) => setEditingPost(prev => ({ ...prev, content }))}
+              mode={editorMode}
+              onModeChange={setEditorMode}
+              lang={lang}
+              minHeight={isFullscreen || fullscreenMode ? '70vh' : '600px'}
+            />
           </div>
         </div>
       </div>
@@ -826,21 +617,9 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
         onCategoryChange={setSelectedCategory}
         onStatusChange={setSelectedStatus}
         onNewPost={() => { setEditingPost({ draft: false }); setView('edit'); setError(''); setSuccess(''); }}
+        onManageCategories={() => setView('categories')}
         totalPosts={posts.length}
       />
-
-      {/* Category Management Button */}
-      <div className="flex justify-end">
-        <button
-          onClick={() => setView('categories')}
-          className="flex items-center gap-2 px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors border border-slate-200 dark:border-slate-700"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-          </svg>
-          {lang === 'zh' ? '管理分类' : 'Manage Categories'}
-        </button>
-      </div>
 
       {/* Notifications */}
       {error && (
@@ -894,27 +673,108 @@ export default function BlogEditor({ lang = 'zh' }: Props) {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredPosts.map((post, index) => {
-            const catColor = categoryColors[post.category] || categoryColors.tech;
-            return (
-              <ArticleCard
-                key={post.slug}
-                post={post}
-                lang={lang}
-                categoryColor={catColor}
-                isDraft={isDraft}
-                onEdit={() => {
-                  setEditingPost({ ...post, draft: isDraft(post.draft) });
-                  setView('edit');
-                  setError('');
-                  setSuccess('');
-                }}
-                onDelete={() => handleDelete(post.slug)}
-                index={index}
-              />
-            );
-          })}
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="divide-y divide-slate-100 dark:divide-slate-700">
+            {filteredPosts.map((post) => {
+              const catColor = categoryColors[post.category] || categoryColors.tech;
+              return (
+                <div
+                  key={post.slug}
+                  className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0 mr-4">
+                    <div className="flex items-center gap-3 mb-1">
+                      <h3 className="font-medium text-slate-900 dark:text-white truncate">
+                        {post.title}
+                      </h3>
+                      <span className={`shrink-0 inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${catColor.bg} ${catColor.text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${catColor.dot}`}></span>
+                        {(() => {
+                          const translationKey = `category.${post.category}` as keyof typeof ui.zh;
+                          return ui[lang][translationKey] || ui.zh[translationKey] || post.category;
+                        })()}
+                      </span>
+                      {isDraft(post.draft) && (
+                        <span className="shrink-0 px-2 py-0.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded">
+                          {lang === 'zh' ? '草稿' : 'Draft'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+                      {post.description || (lang === 'zh' ? '暂无描述' : 'No description')}
+                    </p>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-4">
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      {post.pubDate}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingPost({ ...post, draft: isDraft(post.draft) });
+                          setView('edit');
+                          setError('');
+                          setSuccess('');
+                        }}
+                        className="px-3 py-1.5 text-xs bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors font-medium text-slate-700 dark:text-slate-300"
+                      >
+                        {lang === 'zh' ? '编辑' : 'Edit'}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(post.slug)}
+                        className="px-3 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
+                      >
+                        {lang === 'zh' ? '删除' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Dialog */}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setConfirmDialog(null)}
+          />
+          <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 w-full max-w-md mx-4 overflow-hidden animate-fade-in">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                  <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    {confirmDialog.title}
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    {confirmDialog.message}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 dark:bg-slate-900/50 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                {lang === 'zh' ? '取消' : 'Cancel'}
+              </button>
+              <button
+                onClick={confirmDialog.onConfirm}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+              >
+                {lang === 'zh' ? '确定' : 'Confirm'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
