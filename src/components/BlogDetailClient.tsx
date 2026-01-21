@@ -158,21 +158,21 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName 
     };
   }, [initialSlug]);
 
-  // Detect when breadcrumb becomes sticky and toggle body class for header coordination
+  // Detect when breadcrumb scrolls out of view and show header version
   useEffect(() => {
     const handleScroll = () => {
       if (breadcrumbRef.current) {
         const rect = breadcrumbRef.current.getBoundingClientRect();
-        // Header is 64px (top-16), so when breadcrumb top equals 64, it's sticky
-        const isSticky = rect.top <= 64;
-        if (stickyStateRef.current === isSticky) {
+        // When breadcrumb bottom goes above header (64px), show header breadcrumb
+        const isHidden = rect.bottom < 64;
+        if (stickyStateRef.current === isHidden) {
           return;
         }
-        stickyStateRef.current = isSticky;
-        setIsBreadcrumbSticky(isSticky);
+        stickyStateRef.current = isHidden;
+        setIsBreadcrumbSticky(isHidden);
 
         // Toggle body class for header animation coordination
-        if (isSticky) {
+        if (isHidden) {
           document.body.classList.add('breadcrumb-in-header');
         } else {
           document.body.classList.remove('breadcrumb-in-header');
@@ -433,12 +433,10 @@ export default function BlogDetailClient({ lang = 'zh', initialSlug, authorName 
         </div>
       )}
 
-      {/* Original Breadcrumbs - visible initially, fades when header version appears */}
+      {/* Original Breadcrumbs - normal flow, scrolls with page */}
       <div
         ref={breadcrumbRef}
-        className={`sticky top-16 z-40 py-3 mb-6 transition-opacity duration-300 ${
-          isBreadcrumbSticky ? 'opacity-0 pointer-events-none' : 'opacity-100 bg-transparent'
-        }`}
+        className="py-3 mb-6"
         style={{ marginLeft: 'calc(-50vw + 50%)', marginRight: 'calc(-50vw + 50%)', paddingLeft: 'calc(50vw - 50%)', paddingRight: 'calc(50vw - 50%)' }}
       >
         <nav className="flex items-center gap-2 text-sm" aria-label="Breadcrumb">

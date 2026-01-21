@@ -28,8 +28,8 @@ const socialLabels: Record<SocialLink['type'], { zh: string; en: string }> = {
 };
 ---
 
-<footer class="border-t border-primary-100 dark:border-slate-800 mt-auto transition-colors">
-  <div class="container-wide py-8">
+<footer class="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-slate-900 border-t border-primary-100 dark:border-slate-800 transition-colors">
+  <div class="container-wide py-4">
     <div class="flex flex-col md:flex-row items-center justify-between gap-4">
       <p class="text-sm text-primary-500 dark:text-slate-500">
         {yearDisplay} {siteConfig.title}. {t('footer.rights')}

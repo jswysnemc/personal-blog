@@ -606,20 +606,22 @@ export default function BlogEditor({ lang = 'zh', initialPost, onBack, fullscree
   // List View
   return (
     <div className="space-y-6">
-      {/* Header with Search and Filters */}
-      <ArticlesHeader
-        lang={lang}
-        searchQuery={searchQuery}
-        selectedCategory={selectedCategory}
-        selectedStatus={selectedStatus}
-        categories={categories}
-        onSearchChange={setSearchQuery}
-        onCategoryChange={setSelectedCategory}
-        onStatusChange={setSelectedStatus}
-        onNewPost={() => { setEditingPost({ draft: false }); setView('edit'); setError(''); setSuccess(''); }}
-        onManageCategories={() => setView('categories')}
-        totalPosts={posts.length}
-      />
+      {/* Header with Search and Filters - Sticky below admin header */}
+      <div className="sticky top-36 z-30 bg-slate-50 dark:bg-slate-900 -mx-6 px-6 py-4 -mt-8">
+        <ArticlesHeader
+          lang={lang}
+          searchQuery={searchQuery}
+          selectedCategory={selectedCategory}
+          selectedStatus={selectedStatus}
+          categories={categories}
+          onSearchChange={setSearchQuery}
+          onCategoryChange={setSelectedCategory}
+          onStatusChange={setSelectedStatus}
+          onNewPost={() => { setEditingPost({ draft: false }); setView('edit'); setError(''); setSuccess(''); }}
+          onManageCategories={() => setView('categories')}
+          totalPosts={posts.length}
+        />
+      </div>
 
       {/* Notifications */}
       {error && (
@@ -673,8 +675,8 @@ export default function BlogEditor({ lang = 'zh', initialPost, onBack, fullscree
           )}
         </div>
       ) : (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-          <div className="divide-y divide-slate-100 dark:divide-slate-700">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div className="divide-y divide-slate-100 dark:divide-slate-700 overflow-y-auto flex-1">
             {filteredPosts.map((post) => {
               const catColor = categoryColors[post.category] || categoryColors.tech;
               return (

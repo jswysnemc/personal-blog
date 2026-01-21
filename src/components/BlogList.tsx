@@ -6,6 +6,7 @@ interface Props {
   lang?: Lang;
   initialCategory?: string;
   initialTag?: string;
+  showTitle?: boolean;
 }
 
 const categoryColors: Record<string, string> = {
@@ -24,7 +25,7 @@ const categoryBgColors: Record<string, string> = {
   reading: 'bg-pink-600',
 };
 
-export default function BlogList({ lang = 'zh', initialCategory, initialTag }: Props) {
+export default function BlogList({ lang = 'zh', initialCategory, initialTag, showTitle = false }: Props) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -158,11 +159,24 @@ export default function BlogList({ lang = 'zh', initialCategory, initialTag }: P
   }
 
   return (
-    <div className="flex gap-8">
-      {/* Main Content */}
-      <div className="flex-1 min-w-0">
+    <div>
+      {/* Sticky Header Section - Title + Search + Count */}
+      <div className="sticky top-16 z-30 bg-white dark:bg-slate-900 pb-4 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        {showTitle && (
+          <div className="flex items-baseline justify-between mb-6 pt-2">
+            <h1 className="text-4xl font-bold text-primary-900 dark:text-white">
+              {lang === 'zh' ? '博客' : 'Blog'}
+            </h1>
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              {lang === 'zh'
+                ? `共 ${filteredPosts.length} 篇文章`
+                : `${filteredPosts.length} post${filteredPosts.length !== 1 ? 's' : ''}`}
+            </span>
+          </div>
+        )}
+
         {/* Search Bar */}
-        <div className="mb-6">
+        <div>
           <div className="relative">
             <svg
               className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
@@ -182,7 +196,7 @@ export default function BlogList({ lang = 'zh', initialCategory, initialTag }: P
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={lang === 'zh' ? '搜索文章标题、描述或标签...' : 'Search posts by title, description or tags...'}
-              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
             />
             {searchQuery && (
               <button
@@ -196,61 +210,58 @@ export default function BlogList({ lang = 'zh', initialCategory, initialTag }: P
             )}
           </div>
         </div>
+      </div>
 
-        {/* Active Filters */}
-        {hasActiveFilters && (
-          <div className="flex items-center gap-2 mb-6 flex-wrap">
-            <span className="text-sm text-gray-500">
-              {lang === 'zh' ? '筛选条件:' : 'Filters:'}
-            </span>
-            {selectedCategory && (
-              <span className={`inline-flex items-center gap-1 px-2 py-1 text-sm rounded-full ${categoryColors[selectedCategory] || 'bg-gray-100 text-gray-600'}`}>
-                {getCategoryName(selectedCategory)}
-                <button onClick={() => setSelectedCategory(null)} className="hover:opacity-70">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+      <div className="flex gap-8">
+        {/* Main Content */}
+        <div className="flex-1 min-w-0">
+          {/* Active Filters */}
+          {hasActiveFilters && (
+            <div className="flex items-center gap-2 mb-6 flex-wrap">
+              <span className="text-sm text-gray-500">
+                {lang === 'zh' ? '筛选条件:' : 'Filters:'}
               </span>
-            )}
-            {selectedTag && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 text-sm bg-gray-100 text-gray-600 rounded-full">
-                #{selectedTag}
-                <button onClick={() => setSelectedTag(null)} className="hover:opacity-70">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </span>
-            )}
-            {searchQuery && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 text-sm bg-gray-100 text-gray-600 rounded-full">
-                "{searchQuery}"
-                <button onClick={() => setSearchQuery('')} className="hover:opacity-70">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </span>
-            )}
-            <button
-              onClick={clearFilters}
-              className="text-sm text-gray-500 hover:text-gray-700 underline"
-            >
-              {lang === 'zh' ? '清除全部' : 'Clear all'}
-            </button>
-          </div>
-        )}
+              {selectedCategory && (
+                <span className={`inline-flex items-center gap-1 px-2 py-1 text-sm rounded-full ${categoryColors[selectedCategory] || 'bg-gray-100 text-gray-600'}`}>
+                  {getCategoryName(selectedCategory)}
+                  <button onClick={() => setSelectedCategory(null)} className="hover:opacity-70">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {selectedTag && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 text-sm bg-gray-100 text-gray-600 rounded-full">
+                  #{selectedTag}
+                  <button onClick={() => setSelectedTag(null)} className="hover:opacity-70">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              {searchQuery && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 text-sm bg-gray-100 text-gray-600 rounded-full">
+                  "{searchQuery}"
+                  <button onClick={() => setSearchQuery('')} className="hover:opacity-70">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              )}
+              <button
+                onClick={clearFilters}
+                className="text-sm text-gray-500 hover:text-gray-700 underline"
+              >
+                {lang === 'zh' ? '清除全部' : 'Clear all'}
+              </button>
+            </div>
+          )}
 
-        {/* Results count */}
-        <div className="text-sm text-gray-500 mb-4">
-          {lang === 'zh'
-            ? `共 ${filteredPosts.length} 篇文章`
-            : `${filteredPosts.length} post${filteredPosts.length !== 1 ? 's' : ''}`}
-        </div>
-
-        {/* Post List */}
-        <div className="space-y-4">
+          {/* Post List */}
+          <div className="space-y-4">
           {filteredPosts.map(post => (
             <article key={post.slug} className="blog-card group border border-gray-100 rounded-lg p-5 hover:border-gray-200 hover:shadow-sm transition-all">
               <a href={`${basePath}/blog/${post.slug}`} className="block">
@@ -302,7 +313,7 @@ export default function BlogList({ lang = 'zh', initialCategory, initialTag }: P
 
       {/* Sidebar */}
       <aside className="hidden lg:block w-64 shrink-0">
-        <div className="sticky top-8 space-y-8">
+        <div className="sticky top-60 space-y-8">
           {/* Categories */}
           {categoriesWithCounts.length > 0 && (
             <div>
@@ -365,5 +376,6 @@ export default function BlogList({ lang = 'zh', initialCategory, initialTag }: P
         </div>
       </aside>
     </div>
+  </div>
   );
 }

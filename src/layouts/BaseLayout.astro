@@ -53,7 +53,7 @@ const basePath = lang === 'zh' ? '' : `/${lang}`;
     })();
   </script>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col pb-16">
   <Header lang={lang} />
 
   <main class="flex-1 py-12">
@@ -94,8 +94,8 @@ const basePath = lang === 'zh' ? '' : `/${lang}`;
           </nav>
         </div>
 
-        <!-- Original breadcrumb - fades when header version appears -->
-        <div id="original-breadcrumb" class="sticky top-16 z-40 py-3 mb-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-primary-100 dark:border-slate-800 transition-opacity duration-300">
+        <!-- Original breadcrumb - normal flow, scrolls with page -->
+        <div id="original-breadcrumb" class="py-3 mb-6 transition-opacity duration-300">
           <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <Breadcrumb items={breadcrumbs} lang={lang} />
           </div>
@@ -114,7 +114,7 @@ const basePath = lang === 'zh' ? '' : `/${lang}`;
         const headerBreadcrumb = document.getElementById('header-breadcrumb');
         if (!originalBreadcrumb || !headerBreadcrumb) return;
 
-        let isSticky = false;
+        let isHidden = false;
 
         function updateHeaderLogoOffset() {
           const logo = document.querySelector('.header-logo');
@@ -128,23 +128,20 @@ const basePath = lang === 'zh' ? '' : `/${lang}`;
 
         function handleScroll() {
           const rect = originalBreadcrumb.getBoundingClientRect();
-          const nowSticky = rect.top <= 64;
+          // When original breadcrumb scrolls above header (64px), show header version
+          const nowHidden = rect.bottom < 64;
 
-          if (nowSticky !== isSticky) {
-            isSticky = nowSticky;
-            if (isSticky) {
+          if (nowHidden !== isHidden) {
+            isHidden = nowHidden;
+            if (isHidden) {
               document.body.classList.add('breadcrumb-in-header');
               requestAnimationFrame(updateHeaderLogoOffset);
               setTimeout(updateHeaderLogoOffset, 350);
-              originalBreadcrumb.style.opacity = '0';
-              originalBreadcrumb.style.pointerEvents = 'none';
               headerBreadcrumb.classList.remove('hidden');
               headerBreadcrumb.classList.add('flex', 'animate-breadcrumb-slide-in');
               headerBreadcrumb.style.opacity = '1';
             } else {
               document.body.classList.remove('breadcrumb-in-header');
-              originalBreadcrumb.style.opacity = '1';
-              originalBreadcrumb.style.pointerEvents = 'auto';
               headerBreadcrumb.classList.add('hidden');
               headerBreadcrumb.classList.remove('flex', 'animate-breadcrumb-slide-in');
               headerBreadcrumb.style.opacity = '0';
