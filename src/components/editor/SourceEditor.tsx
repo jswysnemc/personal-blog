@@ -174,9 +174,11 @@ const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(function 
   const scrollToPercentInternal = useCallback((percent: number) => {
     if (!viewRef.current) return;
     const scroller = viewRef.current.scrollDOM;
-    const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+    if (!scroller) return;
+    const maxScroll = (scroller.scrollHeight ?? 0) - (scroller.clientHeight ?? 0);
+    if (maxScroll <= 0) return;
     const targetScroll = maxScroll * percent;
-    if (Math.abs(scroller.scrollTop - targetScroll) > 1) {
+    if (Math.abs((scroller.scrollTop ?? 0) - targetScroll) > 1) {
       isProgrammaticScroll.current = true;
       scroller.scrollTop = targetScroll;
       requestAnimationFrame(() => {
@@ -226,10 +228,11 @@ const SourceEditor = forwardRef<SourceEditorHandle, SourceEditorProps>(function 
       EditorView.domEventHandlers({
         scroll: (event) => {
           if (isProgrammaticScroll.current) return false;
-          if (onScrollRef.current) {
+          if (onScrollRef.current && event.target) {
             const target = event.target as HTMLElement;
-            const scrollTop = target.scrollTop;
-            const scrollHeight = target.scrollHeight - target.clientHeight;
+            if (!target || target.scrollHeight === undefined) return false;
+            const scrollTop = target.scrollTop ?? 0;
+            const scrollHeight = (target.scrollHeight ?? 0) - (target.clientHeight ?? 0);
             const scrollPercent = scrollHeight > 0 ? scrollTop / scrollHeight : 0;
             onScrollRef.current(scrollPercent);
           }
