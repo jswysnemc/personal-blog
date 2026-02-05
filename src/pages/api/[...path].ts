@@ -8,11 +8,19 @@ export const GET: APIRoute = async ({ params, request }) => {
   const targetUrl = `${API_INTERNAL}/api/${path}${url.search}`;
 
   try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Forward Authorization header if present
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
     const response = await fetch(targetUrl, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
     });
 
     const data = await response.text();
@@ -36,12 +44,58 @@ export const POST: APIRoute = async ({ params, request }) => {
   const targetUrl = `${API_INTERNAL}/api/${path}`;
 
   try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Forward Authorization header if present
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
     const body = await request.text();
     const response = await fetch(targetUrl, {
       method: 'POST',
+      headers,
+      body,
+    });
+
+    const data = await response.text();
+    return new Response(data, {
+      status: response.status,
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': response.headers.get('Content-Type') || 'application/json',
       },
+    });
+  } catch (error) {
+    console.error('API proxy error:', error);
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+};
+
+export const PUT: APIRoute = async ({ params, request }) => {
+  const path = params.path || '';
+  const targetUrl = `${API_INTERNAL}/api/${path}`;
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Forward Authorization header if present
+    const authHeader = request.headers.get('Authorization');
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
+    const body = await request.text();
+    const response = await fetch(targetUrl, {
+      method: 'PUT',
+      headers,
       body,
     });
 
