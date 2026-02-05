@@ -154,7 +154,7 @@ function VditorEditor({
       lang: lang === 'zh' ? 'zh_CN' : 'en_US',
       placeholder: lang === 'zh' ? '开始写作...' : 'Start writing...',
       value: '',
-      cdn: '/vditor',
+      cdn: 'https://unpkg.com/vditor@3.10.8',
       cache: {
         enable: false,
       },
@@ -246,8 +246,14 @@ function VditorEditor({
     });
 
     return () => {
-      vditor.destroy();
-      vditorRef.current = null;
+      if (vditorRef.current) {
+        try {
+          vditorRef.current.destroy();
+        } catch (e) {
+          // Ignore destroy errors if vditor wasn't fully initialized
+        }
+        vditorRef.current = null;
+      }
     };
   }, [isDark, lang, minHeight]);
 

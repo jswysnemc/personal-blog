@@ -17,7 +17,7 @@ const TARGET_NODE_HEIGHT = 36;
 const FS_MIN_ZOOM = 0.25;
 const FS_MAX_ZOOM = 4;
 const FS_ZOOM_STEP = 0.25;
-const VDITOR_CDN = '/vditor';
+const VDITOR_CDN = 'https://unpkg.com/vditor@3.10.8';
 
 function useIsDarkMode(): boolean {
   const [isDark, setIsDark] = useState(false);
