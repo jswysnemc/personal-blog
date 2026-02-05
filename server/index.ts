@@ -312,6 +312,279 @@ const server = http.createServer(async (req, res) => {
 
     // ==================== AI API 端点 ====================
 
+    // AI API: 获取 Skills 文档（供 AI Agent 使用）
+    if (req.method === 'GET' && url.pathname === '/api/ai/skills') {
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/markdown; charset=utf-8' });
+      res.end(`# Blog Management Skills
+
+This skill enables AI agents to create, read, update, and delete blog posts via REST API.
+
+## Authentication
+
+All endpoints (except \`/api/ai/categories\` and \`/api/ai/skills\`) require Bearer token authentication:
+
+\`\`\`
+Authorization: Bearer <token>
+\`\`\`
+
+The token is configured via \`AI_API_TOKEN\` environment variable (defaults to admin password).
+
+## Available Operations
+
+### 1. List All Posts
+
+**Request:**
+\`\`\`bash
+curl -X GET "http://localhost:${PORT}/api/ai/posts" \\
+  -H "Authorization: Bearer <token>"
+\`\`\`
+
+**Query Parameters:**
+- \`category\` (optional): Filter by category (${VALID_CATEGORIES.join(', ')})
+- \`draft\` (optional): Filter by draft status (true/false)
+- \`limit\` (optional): Maximum posts to return (default: 50)
+
+**Response:**
+\`\`\`json
+{
+  "success": true,
+  "count": 10,
+  "posts": [
+    {
+      "slug": "my-post",
+      "title": "My Post Title",
+      "description": "Post description",
+      "category": "tech",
+      "tags": ["tag1", "tag2"],
+      "pubDate": "2024-01-15",
+      "draft": false,
+      "contentLength": 1500
+    }
+  ]
+}
+\`\`\`
+
+### 2. Get Single Post
+
+**Request:**
+\`\`\`bash
+curl -X GET "http://localhost:${PORT}/api/ai/posts/<slug>" \\
+  -H "Authorization: Bearer <token>"
+\`\`\`
+
+**Response:**
+\`\`\`json
+{
+  "success": true,
+  "post": {
+    "slug": "my-post",
+    "title": "My Post Title",
+    "description": "Post description",
+    "category": "tech",
+    "tags": ["tag1", "tag2"],
+    "pubDate": "2024-01-15",
+    "draft": false,
+    "content": "Full markdown content here..."
+  }
+}
+\`\`\`
+
+### 3. Create New Post
+
+**Request:**
+\`\`\`bash
+curl -X POST "http://localhost:${PORT}/api/ai/posts" \\
+  -H "Authorization: Bearer <token>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "title": "My New Post",
+    "description": "A brief summary of the post",
+    "category": "tech",
+    "tags": ["javascript", "tutorial"],
+    "content": "# Introduction\\n\\nYour markdown content here...",
+    "draft": false
+  }'
+\`\`\`
+
+**Required Fields:**
+- \`title\` (string, 5-200 chars): Post title
+- \`description\` (string, 10-500 chars): Brief summary
+- \`category\` (string): One of: ${VALID_CATEGORIES.join(', ')}
+- \`content\` (string, min 100 chars): Markdown content
+
+**Optional Fields:**
+- \`tags\` (array, max 10): Tag strings
+- \`draft\` (boolean, default: false): Save as draft
+- \`slug\` (string): Custom URL slug (auto-generated if not provided)
+- \`pubDate\` (string, YYYY-MM-DD): Publication date (defaults to today)
+
+**Response:**
+\`\`\`json
+{
+  "success": true,
+  "slug": "my-new-post",
+  "url": "/blog/my-new-post",
+  "message": "Blog post created successfully"
+}
+\`\`\`
+
+### 4. Update Existing Post
+
+**Request:**
+\`\`\`bash
+curl -X PUT "http://localhost:${PORT}/api/ai/posts/<slug>" \\
+  -H "Authorization: Bearer <token>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "title": "Updated Title",
+    "content": "Updated content..."
+  }'
+\`\`\`
+
+**Notes:**
+- Only include fields you want to update
+- Other fields will retain their existing values
+- Use \`newSlug\` to rename the post URL
+
+**Response:**
+\`\`\`json
+{
+  "success": true,
+  "message": "Blog post updated successfully",
+  "slug": "my-post",
+  "url": "/blog/my-post"
+}
+\`\`\`
+
+### 5. Delete Post
+
+**Request:**
+\`\`\`bash
+curl -X DELETE "http://localhost:${PORT}/api/ai/posts/<slug>" \\
+  -H "Authorization: Bearer <token>"
+\`\`\`
+
+**Response:**
+\`\`\`json
+{
+  "success": true,
+  "message": "Blog post deleted successfully",
+  "deleted": {
+    "slug": "my-post",
+    "title": "My Post Title"
+  }
+}
+\`\`\`
+
+### 6. Validate Post Data (Dry Run)
+
+**Request:**
+\`\`\`bash
+curl -X POST "http://localhost:${PORT}/api/ai/posts/validate" \\
+  -H "Authorization: Bearer <token>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "title": "Test Post",
+    "description": "Test description",
+    "category": "tech",
+    "content": "Test content..."
+  }'
+\`\`\`
+
+**Response (validation passed):**
+\`\`\`json
+{
+  "valid": true,
+  "errors": [],
+  "preview": {
+    "slug": "test-post",
+    "title": "Test Post",
+    "description": "Test description",
+    "category": "tech",
+    "tags": [],
+    "draft": false,
+    "pubDate": "2024-01-15"
+  }
+}
+\`\`\`
+
+**Response (validation failed):**
+\`\`\`json
+{
+  "valid": false,
+  "errors": [
+    {
+      "field": "content",
+      "message": "Content is too short (minimum 100 characters)",
+      "suggestion": "Provide more substantial content for the blog post"
+    }
+  ]
+}
+\`\`\`
+
+### 7. Get Valid Categories
+
+**Request (no auth required):**
+\`\`\`bash
+curl -X GET "http://localhost:${PORT}/api/ai/categories"
+\`\`\`
+
+**Response:**
+\`\`\`json
+{
+  "categories": ["tech", "life", "thoughts", "tutorial", "reading"],
+  "descriptions": {
+    "tech": "Technical articles about programming, software, frameworks, etc.",
+    "tutorial": "Step-by-step how-to guides and tutorials",
+    "life": "Personal stories, experiences, and lifestyle content",
+    "thoughts": "Opinions, reflections, philosophical ideas",
+    "reading": "Book reviews, reading notes, and literary discussions"
+  }
+}
+\`\`\`
+
+## Error Handling
+
+All errors return JSON with helpful information:
+
+\`\`\`json
+{
+  "success": false,
+  "error": "Error description",
+  "hint": "How to fix the error",
+  "errors": [
+    {
+      "field": "fieldName",
+      "message": "What's wrong",
+      "suggestion": "How to fix it"
+    }
+  ]
+}
+\`\`\`
+
+## Common Workflows
+
+### Create a new blog post:
+1. Call \`GET /api/ai/categories\` to see valid categories
+2. Call \`POST /api/ai/posts/validate\` to check your data
+3. Call \`POST /api/ai/posts\` to create the post
+
+### Update an existing post:
+1. Call \`GET /api/ai/posts/<slug>\` to get current content
+2. Modify the fields you want to change
+3. Call \`PUT /api/ai/posts/<slug>\` with only the changed fields
+
+### Rename a post URL:
+\`\`\`bash
+curl -X PUT "http://localhost:${PORT}/api/ai/posts/old-slug" \\
+  -H "Authorization: Bearer <token>" \\
+  -H "Content-Type: application/json" \\
+  -d '{"newSlug": "new-slug"}'
+\`\`\`
+`);
+      return;
+    }
+
     // AI API: 获取 API 信息和使用说明
     if (req.method === 'GET' && url.pathname === '/api/ai/info') {
       res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
@@ -407,8 +680,14 @@ const server = http.createServer(async (req, res) => {
           'GET /api/ai/categories': {
             description: 'Get list of valid categories',
             authentication: 'Not required'
+          },
+          'GET /api/ai/skills': {
+            description: 'Get detailed Markdown documentation for AI agents (this skill document)',
+            authentication: 'Not required',
+            note: 'Returns Markdown format, ideal for AI context injection'
           }
         },
+        skillsUrl: `/api/ai/skills`,
         categories: VALID_CATEGORIES.map(cat => ({
           value: cat,
           description: cat === 'tech' ? 'Technical articles about programming, software, etc.'
