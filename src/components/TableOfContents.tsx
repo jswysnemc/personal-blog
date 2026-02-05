@@ -86,10 +86,26 @@ export default function TableOfContents({ content, lang = 'zh' }: Props) {
     }
   };
 
+  // Find active item index for auto-scroll
+  const activeIndex = headings.findIndex(h => h.id === activeId);
+
+  // Auto-scroll TOC to keep active item visible
+  useEffect(() => {
+    if (activeId) {
+      const activeElement = document.getElementById(`toc-item-${activeId}`);
+      if (activeElement) {
+        activeElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      }
+    }
+  }, [activeId]);
+
   return (
-    <nav className="sticky top-32">
+    <nav className="sticky top-32 max-h-[calc(100vh-10rem)] flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-4 flex-shrink-0">
         <svg className="w-4 h-4 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M4 6h16M4 10h16M4 14h16M4 18h16" />
@@ -99,8 +115,8 @@ export default function TableOfContents({ content, lang = 'zh' }: Props) {
         </h3>
       </div>
 
-      {/* Progress line container */}
-      <div className="relative">
+      {/* Progress line container - scrollable */}
+      <div className="relative overflow-y-auto flex-1 min-h-0 pr-2 toc-scroll">
         {/* Background line */}
         <div className="absolute left-0 top-0 bottom-0 w-px bg-slate-200 dark:bg-slate-700" />
 
@@ -108,7 +124,7 @@ export default function TableOfContents({ content, lang = 'zh' }: Props) {
         <div
           className="absolute left-0 w-px bg-blue-500 dark:bg-blue-400 transition-all duration-300 ease-out"
           style={{
-            top: `${(headings.findIndex(h => h.id === activeId) / headings.length) * 100}%`,
+            top: `${(activeIndex >= 0 ? activeIndex / headings.length : 0) * 100}%`,
             height: `${100 / headings.length}%`,
           }}
         />
@@ -120,6 +136,7 @@ export default function TableOfContents({ content, lang = 'zh' }: Props) {
             return (
               <li
                 key={id}
+                id={`toc-item-${id}`}
                 style={{ paddingLeft: `${(level - 2) * 0.75}rem` }}
               >
                 <button
@@ -144,7 +161,7 @@ export default function TableOfContents({ content, lang = 'zh' }: Props) {
       {/* Scroll to top button */}
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="mt-6 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors group"
+        className="mt-4 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors group flex-shrink-0"
       >
         <svg className="w-4 h-4 transition-transform group-hover:-translate-y-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
