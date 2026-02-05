@@ -11,8 +11,8 @@ const COMMENTS_FILE = process.env.COMMENTS_FILE || path.join(__dirname, 'comment
 // 管理员密码 (生产环境应使用环境变量)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'blog_admin_2024';
 
-// AI API Token (用于自动化创建博客)
-const AI_API_TOKEN = process.env.AI_API_TOKEN || 'ai_blog_token_2024';
+// AI API Token (用于自动化创建博客，默认与管理员密码相同)
+const AI_API_TOKEN = process.env.AI_API_TOKEN || ADMIN_PASSWORD;
 
 // 简单的 session 存储 (生产环境应使用 Redis 等)
 const sessions = new Map<string, { expires: number }>();
