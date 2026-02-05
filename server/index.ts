@@ -957,8 +957,8 @@ ${data.content}`;
     }
 
     // AI API: 获取单篇博客文章
-    const getSinglePostMatch = url.pathname.match(/^\/api\/ai\/posts\/([a-z0-9-]+)$/);
-    if (req.method === 'GET' && getSinglePostMatch) {
+    const getSinglePostMatch = url.pathname.match(/^\/api\/ai\/posts\/(.+)$/);
+    if (req.method === 'GET' && getSinglePostMatch && !url.pathname.endsWith('/validate')) {
       const authHeader = req.headers.authorization;
       const token = authHeader?.replace('Bearer ', '');
 
@@ -972,7 +972,7 @@ ${data.content}`;
         return;
       }
 
-      const slug = getSinglePostMatch[1];
+      const slug = decodeURIComponent(getSinglePostMatch[1]);
       const filepath = path.join(BLOG_DIR, `${slug}.md`);
 
       if (!fs.existsSync(filepath)) {
@@ -1024,7 +1024,7 @@ ${data.content}`;
     }
 
     // AI API: 更新博客文章
-    const updatePostMatch = url.pathname.match(/^\/api\/ai\/posts\/([a-z0-9-]+)$/);
+    const updatePostMatch = url.pathname.match(/^\/api\/ai\/posts\/(.+)$/);
     if (req.method === 'PUT' && updatePostMatch) {
       const authHeader = req.headers.authorization;
       const token = authHeader?.replace('Bearer ', '');
@@ -1039,7 +1039,7 @@ ${data.content}`;
         return;
       }
 
-      const slug = updatePostMatch[1];
+      const slug = decodeURIComponent(updatePostMatch[1]);
       const filepath = path.join(BLOG_DIR, `${slug}.md`);
 
       if (!fs.existsSync(filepath)) {
@@ -1186,7 +1186,7 @@ ${updatedPost.content}`;
     }
 
     // AI API: 删除博客文章
-    const deletePostMatch = url.pathname.match(/^\/api\/ai\/posts\/([a-z0-9-]+)$/);
+    const deletePostMatch = url.pathname.match(/^\/api\/ai\/posts\/(.+)$/);
     if (req.method === 'DELETE' && deletePostMatch) {
       const authHeader = req.headers.authorization;
       const token = authHeader?.replace('Bearer ', '');
@@ -1201,7 +1201,7 @@ ${updatedPost.content}`;
         return;
       }
 
-      const slug = deletePostMatch[1];
+      const slug = decodeURIComponent(deletePostMatch[1]);
       const filepath = path.join(BLOG_DIR, `${slug}.md`);
 
       if (!fs.existsSync(filepath)) {
