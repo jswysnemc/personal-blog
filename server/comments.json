@@ -10,15 +10,6 @@
       "postSlug": "dsa-f"
     }
   ],
-  "building-rest-api-with-go": [
-    {
-      "id": 1768830452379,
-      "author": "Snemc",
-      "authorColor": "#8b5cf6",
-      "content": "Demo",
-      "createdAt": "2026-01-19T13:47:32.379Z",
-      "postSlug": "building-rest-api-with-go"
-    }
-  ],
+  "building-rest-api-with-go": [],
   "mermaid-and-latex-demo": []
 }

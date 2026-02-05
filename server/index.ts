@@ -361,6 +361,49 @@ const server = http.createServer(async (req, res) => {
               limit: { type: 'number', required: false, default: 50, description: 'Maximum posts to return' }
             }
           },
+          'GET /api/ai/posts/:slug': {
+            description: 'Get a single blog post by slug',
+            authentication: 'Required',
+            params: {
+              slug: { type: 'string', required: true, description: 'The post slug' }
+            },
+            responses: {
+              200: { description: 'Post found', example: { success: true, post: { slug: 'my-post', title: '...', content: '...' } } },
+              404: { description: 'Post not found' }
+            }
+          },
+          'PUT /api/ai/posts/:slug': {
+            description: 'Update an existing blog post',
+            authentication: 'Required',
+            params: {
+              slug: { type: 'string', required: true, description: 'The post slug to update' }
+            },
+            body: {
+              title: { type: 'string', required: false, description: 'New title (optional)' },
+              description: { type: 'string', required: false, description: 'New description (optional)' },
+              category: { type: 'string', required: false, description: 'New category (optional)' },
+              tags: { type: 'array', required: false, description: 'New tags (optional)' },
+              content: { type: 'string', required: false, description: 'New content (optional)' },
+              draft: { type: 'boolean', required: false, description: 'Draft status (optional)' },
+              newSlug: { type: 'string', required: false, description: 'Rename the post slug (optional)' }
+            },
+            responses: {
+              200: { description: 'Post updated successfully' },
+              400: { description: 'Validation errors' },
+              404: { description: 'Post not found' }
+            }
+          },
+          'DELETE /api/ai/posts/:slug': {
+            description: 'Delete a blog post',
+            authentication: 'Required',
+            params: {
+              slug: { type: 'string', required: true, description: 'The post slug to delete' }
+            },
+            responses: {
+              200: { description: 'Post deleted successfully' },
+              404: { description: 'Post not found' }
+            }
+          },
           'GET /api/ai/categories': {
             description: 'Get list of valid categories',
             authentication: 'Not required'
@@ -630,6 +673,297 @@ ${data.content}`;
         success: true,
         count: posts.length,
         posts
+      }));
+      return;
+    }
+
+    // AI API: 获取单篇博客文章
+    const getSinglePostMatch = url.pathname.match(/^\/api\/ai\/posts\/([a-z0-9-]+)$/);
+    if (req.method === 'GET' && getSinglePostMatch) {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.replace('Bearer ', '');
+
+      if (!isValidAIToken(token)) {
+        res.writeHead(401, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Invalid or missing API token',
+          hint: 'Include Authorization header: Bearer <AI_API_TOKEN>'
+        }));
+        return;
+      }
+
+      const slug = getSinglePostMatch[1];
+      const filepath = path.join(BLOG_DIR, `${slug}.md`);
+
+      if (!fs.existsSync(filepath)) {
+        res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: `Post not found: "${slug}"`,
+          hint: 'Use GET /api/ai/posts to list all available posts'
+        }));
+        return;
+      }
+
+      const fileContent = fs.readFileSync(filepath, 'utf-8');
+      const match = fileContent.match(/^---\n([\s\S]*?)\n---\n*([\s\S]*)$/);
+      const frontmatter: Record<string, any> = {};
+      let content = fileContent;
+
+      if (match) {
+        match[1].split('\n').forEach(line => {
+          const [key, ...rest] = line.split(':');
+          if (key && rest.length) {
+            let value: any = rest.join(':').trim();
+            if (value.startsWith('[')) {
+              try {
+                value = JSON.parse(value.replace(/'/g, '"'));
+              } catch {}
+            }
+            if (typeof value === 'string') {
+              value = value.replace(/^["']|["']$/g, '');
+            }
+            if (value === 'true') value = true;
+            if (value === 'false') value = false;
+            frontmatter[key.trim()] = value;
+          }
+        });
+        content = match[2];
+      }
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        post: {
+          slug,
+          ...frontmatter,
+          content
+        }
+      }));
+      return;
+    }
+
+    // AI API: 更新博客文章
+    const updatePostMatch = url.pathname.match(/^\/api\/ai\/posts\/([a-z0-9-]+)$/);
+    if (req.method === 'PUT' && updatePostMatch) {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.replace('Bearer ', '');
+
+      if (!isValidAIToken(token)) {
+        res.writeHead(401, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Invalid or missing API token',
+          hint: 'Include Authorization header: Bearer <AI_API_TOKEN>'
+        }));
+        return;
+      }
+
+      const slug = updatePostMatch[1];
+      const filepath = path.join(BLOG_DIR, `${slug}.md`);
+
+      if (!fs.existsSync(filepath)) {
+        res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: `Post not found: "${slug}"`,
+          hint: 'Use GET /api/ai/posts to list all available posts'
+        }));
+        return;
+      }
+
+      const body = await parseBody(req);
+      let updateData: BlogPostInput & { newSlug?: string };
+      try {
+        updateData = JSON.parse(body);
+      } catch {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Invalid JSON in request body',
+          hint: 'Ensure the request body is valid JSON'
+        }));
+        return;
+      }
+
+      // 读取现有文章
+      const fileContent = fs.readFileSync(filepath, 'utf-8');
+      const match = fileContent.match(/^---\n([\s\S]*?)\n---\n*([\s\S]*)$/);
+      const existingFrontmatter: Record<string, any> = {};
+      let existingContent = fileContent;
+
+      if (match) {
+        match[1].split('\n').forEach(line => {
+          const [key, ...rest] = line.split(':');
+          if (key && rest.length) {
+            let value: any = rest.join(':').trim();
+            if (value.startsWith('[')) {
+              try {
+                value = JSON.parse(value.replace(/'/g, '"'));
+              } catch {}
+            }
+            if (typeof value === 'string') {
+              value = value.replace(/^["']|["']$/g, '');
+            }
+            if (value === 'true') value = true;
+            if (value === 'false') value = false;
+            existingFrontmatter[key.trim()] = value;
+          }
+        });
+        existingContent = match[2];
+      }
+
+      // 合并更新
+      const updatedPost: BlogPostInput = {
+        title: updateData.title ?? existingFrontmatter.title,
+        description: updateData.description ?? existingFrontmatter.description,
+        category: updateData.category ?? existingFrontmatter.category,
+        tags: updateData.tags ?? existingFrontmatter.tags ?? [],
+        content: updateData.content ?? existingContent,
+        draft: updateData.draft ?? existingFrontmatter.draft ?? false,
+        pubDate: updateData.pubDate ?? existingFrontmatter.pubDate,
+      };
+
+      // 验证更新后的数据
+      const validation = validateBlogPost(updatedPost);
+      if (!validation.valid) {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          errors: validation.errors,
+          hint: 'Fix the errors above and retry'
+        }));
+        return;
+      }
+
+      // 生成新的 Markdown
+      const markdown = `---
+title: "${updatedPost.title}"
+description: "${updatedPost.description}"
+pubDate: ${updatedPost.pubDate}
+category: ${updatedPost.category}
+tags: [${(updatedPost.tags || []).map((t: string) => `"${t}"`).join(', ')}]
+draft: ${updatedPost.draft === true || updatedPost.draft === 'true' ? 'true' : 'false'}
+---
+
+${updatedPost.content}`;
+
+      // 处理 slug 重命名
+      let finalSlug = slug;
+      let finalFilepath = filepath;
+
+      if (updateData.newSlug && updateData.newSlug !== slug) {
+        const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+        if (!slugRegex.test(updateData.newSlug)) {
+          res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            error: 'Invalid newSlug format',
+            hint: 'Slug should be lowercase letters, numbers, and hyphens only, e.g., "my-blog-post"'
+          }));
+          return;
+        }
+
+        const newFilepath = path.join(BLOG_DIR, `${updateData.newSlug}.md`);
+        if (fs.existsSync(newFilepath)) {
+          res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            error: `Slug "${updateData.newSlug}" already exists`,
+            hint: 'Choose a different slug or delete the existing post first'
+          }));
+          return;
+        }
+
+        // 删除旧文件，写入新文件
+        fs.unlinkSync(filepath);
+        finalSlug = updateData.newSlug;
+        finalFilepath = newFilepath;
+      }
+
+      fs.writeFileSync(finalFilepath, markdown);
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Blog post updated successfully',
+        slug: finalSlug,
+        url: `/blog/${finalSlug}`,
+        post: {
+          title: updatedPost.title,
+          description: updatedPost.description,
+          category: updatedPost.category,
+          tags: updatedPost.tags || [],
+          draft: updatedPost.draft === true || updatedPost.draft === 'true',
+          pubDate: updatedPost.pubDate
+        },
+        ...(updateData.newSlug && updateData.newSlug !== slug ? {
+          renamed: { from: slug, to: finalSlug }
+        } : {})
+      }));
+      return;
+    }
+
+    // AI API: 删除博客文章
+    const deletePostMatch = url.pathname.match(/^\/api\/ai\/posts\/([a-z0-9-]+)$/);
+    if (req.method === 'DELETE' && deletePostMatch) {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.replace('Bearer ', '');
+
+      if (!isValidAIToken(token)) {
+        res.writeHead(401, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Invalid or missing API token',
+          hint: 'Include Authorization header: Bearer <AI_API_TOKEN>'
+        }));
+        return;
+      }
+
+      const slug = deletePostMatch[1];
+      const filepath = path.join(BLOG_DIR, `${slug}.md`);
+
+      if (!fs.existsSync(filepath)) {
+        res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: `Post not found: "${slug}"`,
+          hint: 'Use GET /api/ai/posts to list all available posts'
+        }));
+        return;
+      }
+
+      // 读取文章信息用于返回
+      const fileContent = fs.readFileSync(filepath, 'utf-8');
+      const match = fileContent.match(/^---\n([\s\S]*?)\n---/);
+      const frontmatter: Record<string, any> = {};
+
+      if (match) {
+        match[1].split('\n').forEach(line => {
+          const [key, ...rest] = line.split(':');
+          if (key && rest.length) {
+            let value: any = rest.join(':').trim();
+            if (typeof value === 'string') {
+              value = value.replace(/^["']|["']$/g, '');
+            }
+            frontmatter[key.trim()] = value;
+          }
+        });
+      }
+
+      // 删除文件
+      fs.unlinkSync(filepath);
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        message: 'Blog post deleted successfully',
+        deleted: {
+          slug,
+          title: frontmatter.title || slug
+        }
       }));
       return;
     }
