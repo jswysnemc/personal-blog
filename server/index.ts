@@ -11,8 +11,205 @@ const COMMENTS_FILE = process.env.COMMENTS_FILE || path.join(__dirname, 'comment
 // 管理员密码 (生产环境应使用环境变量)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'blog_admin_2024';
 
+// AI API Token (用于自动化创建博客)
+const AI_API_TOKEN = process.env.AI_API_TOKEN || 'ai_blog_token_2024';
+
 // 简单的 session 存储 (生产环境应使用 Redis 等)
 const sessions = new Map<string, { expires: number }>();
+
+// 有效的分类列表
+const VALID_CATEGORIES = ['tech', 'life', 'thoughts', 'tutorial', 'reading'];
+
+// 验证博客元数据的函数
+interface ValidationError {
+  field: string;
+  message: string;
+  suggestion?: string;
+}
+
+interface BlogPostInput {
+  title?: string;
+  description?: string;
+  category?: string;
+  tags?: string[];
+  content?: string;
+  draft?: boolean | string;
+  slug?: string;
+  pubDate?: string;
+}
+
+function validateBlogPost(data: BlogPostInput): { valid: boolean; errors: ValidationError[] } {
+  const errors: ValidationError[] = [];
+
+  // 验证标题
+  if (!data.title) {
+    errors.push({
+      field: 'title',
+      message: 'Title is required',
+      suggestion: 'Provide a descriptive title for the blog post, e.g., "Getting Started with TypeScript"'
+    });
+  } else if (typeof data.title !== 'string') {
+    errors.push({
+      field: 'title',
+      message: 'Title must be a string',
+      suggestion: 'Provide title as a plain text string'
+    });
+  } else if (data.title.length < 5) {
+    errors.push({
+      field: 'title',
+      message: 'Title is too short (minimum 5 characters)',
+      suggestion: 'Provide a more descriptive title'
+    });
+  } else if (data.title.length > 200) {
+    errors.push({
+      field: 'title',
+      message: 'Title is too long (maximum 200 characters)',
+      suggestion: 'Shorten the title to be more concise'
+    });
+  }
+
+  // 验证描述
+  if (!data.description) {
+    errors.push({
+      field: 'description',
+      message: 'Description is required',
+      suggestion: 'Provide a brief summary of the blog post (50-200 characters recommended)'
+    });
+  } else if (typeof data.description !== 'string') {
+    errors.push({
+      field: 'description',
+      message: 'Description must be a string',
+      suggestion: 'Provide description as a plain text string'
+    });
+  } else if (data.description.length < 10) {
+    errors.push({
+      field: 'description',
+      message: 'Description is too short (minimum 10 characters)',
+      suggestion: 'Provide a more detailed description that summarizes the post content'
+    });
+  } else if (data.description.length > 500) {
+    errors.push({
+      field: 'description',
+      message: 'Description is too long (maximum 500 characters)',
+      suggestion: 'Shorten the description to be a brief summary'
+    });
+  }
+
+  // 验证分类
+  if (!data.category) {
+    errors.push({
+      field: 'category',
+      message: 'Category is required',
+      suggestion: `Choose one of the valid categories: ${VALID_CATEGORIES.join(', ')}`
+    });
+  } else if (!VALID_CATEGORIES.includes(data.category)) {
+    errors.push({
+      field: 'category',
+      message: `Invalid category: "${data.category}"`,
+      suggestion: `Valid categories are: ${VALID_CATEGORIES.join(', ')}. "tech" for technical articles, "tutorial" for how-to guides, "life" for personal stories, "thoughts" for opinions, "reading" for book reviews`
+    });
+  }
+
+  // 验证标签
+  if (data.tags !== undefined) {
+    if (!Array.isArray(data.tags)) {
+      errors.push({
+        field: 'tags',
+        message: 'Tags must be an array of strings',
+        suggestion: 'Provide tags as an array, e.g., ["javascript", "react", "frontend"]'
+      });
+    } else {
+      const invalidTags = data.tags.filter(t => typeof t !== 'string' || t.length === 0);
+      if (invalidTags.length > 0) {
+        errors.push({
+          field: 'tags',
+          message: 'All tags must be non-empty strings',
+          suggestion: 'Remove empty tags and ensure all tags are strings'
+        });
+      }
+      if (data.tags.length > 10) {
+        errors.push({
+          field: 'tags',
+          message: 'Too many tags (maximum 10)',
+          suggestion: 'Reduce the number of tags to the most relevant ones'
+        });
+      }
+    }
+  }
+
+  // 验证内容
+  if (!data.content) {
+    errors.push({
+      field: 'content',
+      message: 'Content is required',
+      suggestion: 'Provide the blog post content in Markdown format'
+    });
+  } else if (typeof data.content !== 'string') {
+    errors.push({
+      field: 'content',
+      message: 'Content must be a string',
+      suggestion: 'Provide content as a Markdown-formatted string'
+    });
+  } else if (data.content.length < 100) {
+    errors.push({
+      field: 'content',
+      message: 'Content is too short (minimum 100 characters)',
+      suggestion: 'Provide more substantial content for the blog post'
+    });
+  }
+
+  // 验证 draft 字段
+  if (data.draft !== undefined && typeof data.draft !== 'boolean' && data.draft !== 'true' && data.draft !== 'false') {
+    errors.push({
+      field: 'draft',
+      message: 'Draft must be a boolean (true/false)',
+      suggestion: 'Set draft to true to save as draft, or false to publish immediately'
+    });
+  }
+
+  // 验证 pubDate 格式
+  if (data.pubDate) {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(data.pubDate)) {
+      errors.push({
+        field: 'pubDate',
+        message: 'Invalid date format',
+        suggestion: 'Use YYYY-MM-DD format, e.g., "2024-01-15"'
+      });
+    } else {
+      const date = new Date(data.pubDate);
+      if (isNaN(date.getTime())) {
+        errors.push({
+          field: 'pubDate',
+          message: 'Invalid date value',
+          suggestion: 'Provide a valid date in YYYY-MM-DD format'
+        });
+      }
+    }
+  }
+
+  // 验证 slug 格式
+  if (data.slug) {
+    const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    if (!slugRegex.test(data.slug)) {
+      errors.push({
+        field: 'slug',
+        message: 'Invalid slug format',
+        suggestion: 'Slug should be lowercase letters, numbers, and hyphens only, e.g., "my-blog-post"'
+      });
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+// 验证 AI API Token
+function isValidAIToken(token: string | undefined): boolean {
+  return token === AI_API_TOKEN;
+}
 
 function generateSessionToken(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -112,6 +309,332 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ success: true }));
       return;
     }
+
+    // ==================== AI API 端点 ====================
+
+    // AI API: 获取 API 信息和使用说明
+    if (req.method === 'GET' && url.pathname === '/api/ai/info') {
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        name: 'Blog AI API',
+        version: '1.0.0',
+        description: 'API for AI agents to create and manage blog posts',
+        authentication: {
+          type: 'Bearer Token',
+          header: 'Authorization: Bearer <AI_API_TOKEN>',
+          note: 'Set AI_API_TOKEN environment variable on server'
+        },
+        endpoints: {
+          'POST /api/ai/posts': {
+            description: 'Create a new blog post',
+            authentication: 'Required',
+            body: {
+              title: { type: 'string', required: true, minLength: 5, maxLength: 200, description: 'Blog post title' },
+              description: { type: 'string', required: true, minLength: 10, maxLength: 500, description: 'Brief summary of the post' },
+              category: { type: 'string', required: true, enum: VALID_CATEGORIES, description: 'Post category' },
+              tags: { type: 'array', required: false, maxItems: 10, description: 'Array of tag strings' },
+              content: { type: 'string', required: true, minLength: 100, description: 'Markdown content of the post' },
+              draft: { type: 'boolean', required: false, default: false, description: 'Save as draft if true' },
+              slug: { type: 'string', required: false, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', description: 'URL slug (auto-generated if not provided)' },
+              pubDate: { type: 'string', required: false, format: 'YYYY-MM-DD', description: 'Publication date (defaults to today)' }
+            },
+            responses: {
+              200: { description: 'Post created successfully', example: { success: true, slug: 'my-blog-post', url: '/blog/my-blog-post' } },
+              400: { description: 'Validation errors', example: { success: false, errors: [{ field: 'title', message: 'Title is required', suggestion: '...' }] } },
+              401: { description: 'Invalid or missing API token' }
+            }
+          },
+          'POST /api/ai/posts/validate': {
+            description: 'Validate blog post data without creating',
+            authentication: 'Required',
+            body: 'Same as POST /api/ai/posts',
+            responses: {
+              200: { description: 'Validation result', example: { valid: true, errors: [] } }
+            }
+          },
+          'GET /api/ai/posts': {
+            description: 'List all blog posts',
+            authentication: 'Required',
+            query: {
+              category: { type: 'string', required: false, description: 'Filter by category' },
+              draft: { type: 'boolean', required: false, description: 'Filter by draft status' },
+              limit: { type: 'number', required: false, default: 50, description: 'Maximum posts to return' }
+            }
+          },
+          'GET /api/ai/categories': {
+            description: 'Get list of valid categories',
+            authentication: 'Not required'
+          }
+        },
+        categories: VALID_CATEGORIES.map(cat => ({
+          value: cat,
+          description: cat === 'tech' ? 'Technical articles about programming, software, etc.'
+            : cat === 'tutorial' ? 'Step-by-step how-to guides'
+            : cat === 'life' ? 'Personal stories and experiences'
+            : cat === 'thoughts' ? 'Opinions, reflections, and ideas'
+            : cat === 'reading' ? 'Book reviews and reading notes'
+            : cat
+        }))
+      }));
+      return;
+    }
+
+    // AI API: 获取有效分类列表
+    if (req.method === 'GET' && url.pathname === '/api/ai/categories') {
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        categories: VALID_CATEGORIES,
+        descriptions: {
+          tech: 'Technical articles about programming, software, frameworks, etc.',
+          tutorial: 'Step-by-step how-to guides and tutorials',
+          life: 'Personal stories, experiences, and lifestyle content',
+          thoughts: 'Opinions, reflections, philosophical ideas',
+          reading: 'Book reviews, reading notes, and literary discussions'
+        }
+      }));
+      return;
+    }
+
+    // AI API: 验证博客数据（不创建）
+    if (req.method === 'POST' && url.pathname === '/api/ai/posts/validate') {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.replace('Bearer ', '');
+
+      if (!isValidAIToken(token)) {
+        res.writeHead(401, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Invalid or missing API token',
+          hint: 'Include Authorization header: Bearer <AI_API_TOKEN>'
+        }));
+        return;
+      }
+
+      const body = await parseBody(req);
+      let data: BlogPostInput;
+      try {
+        data = JSON.parse(body);
+      } catch {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Invalid JSON in request body',
+          hint: 'Ensure the request body is valid JSON'
+        }));
+        return;
+      }
+
+      const validation = validateBlogPost(data);
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        valid: validation.valid,
+        errors: validation.errors,
+        ...(validation.valid ? {
+          preview: {
+            slug: data.slug || generateSlug(data.title || ''),
+            title: data.title,
+            description: data.description,
+            category: data.category,
+            tags: data.tags || [],
+            draft: data.draft === true || data.draft === 'true',
+            pubDate: data.pubDate || new Date().toISOString().split('T')[0]
+          }
+        } : {})
+      }));
+      return;
+    }
+
+    // AI API: 创建博客文章
+    if (req.method === 'POST' && url.pathname === '/api/ai/posts') {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.replace('Bearer ', '');
+
+      if (!isValidAIToken(token)) {
+        res.writeHead(401, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Invalid or missing API token',
+          hint: 'Include Authorization header: Bearer <AI_API_TOKEN>'
+        }));
+        return;
+      }
+
+      const body = await parseBody(req);
+      let data: BlogPostInput;
+      try {
+        data = JSON.parse(body);
+      } catch {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Invalid JSON in request body',
+          hint: 'Ensure the request body is valid JSON'
+        }));
+        return;
+      }
+
+      // 验证数据
+      const validation = validateBlogPost(data);
+      if (!validation.valid) {
+        res.writeHead(400, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Validation failed',
+          errors: validation.errors,
+          hint: 'Fix the errors above and retry. Use POST /api/ai/posts/validate to test without creating.'
+        }));
+        return;
+      }
+
+      // 生成 slug
+      const slug = data.slug || generateSlug(data.title!);
+      const filename = `${slug}.md`;
+      const filepath = path.join(BLOG_DIR, filename);
+
+      // 检查是否已存在
+      if (fs.existsSync(filepath) && !data.slug) {
+        // 如果没有指定 slug 且自动生成的已存在，添加时间戳
+        const uniqueSlug = `${slug}-${Date.now()}`;
+        const uniqueFilepath = path.join(BLOG_DIR, `${uniqueSlug}.md`);
+
+        const pubDate = data.pubDate || new Date().toISOString().split('T')[0];
+        const markdown = `---
+title: "${data.title}"
+description: "${data.description}"
+pubDate: ${pubDate}
+category: ${data.category}
+tags: [${(data.tags || []).map((t: string) => `"${t}"`).join(', ')}]
+draft: ${data.draft === true || data.draft === 'true' ? 'true' : 'false'}
+---
+
+${data.content}`;
+
+        fs.writeFileSync(uniqueFilepath, markdown);
+
+        res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          slug: uniqueSlug,
+          url: `/blog/${uniqueSlug}`,
+          message: 'Blog post created successfully',
+          note: `Original slug "${slug}" was taken, used "${uniqueSlug}" instead`
+        }));
+        return;
+      }
+
+      const pubDate = data.pubDate || new Date().toISOString().split('T')[0];
+      const markdown = `---
+title: "${data.title}"
+description: "${data.description}"
+pubDate: ${pubDate}
+category: ${data.category}
+tags: [${(data.tags || []).map((t: string) => `"${t}"`).join(', ')}]
+draft: ${data.draft === true || data.draft === 'true' ? 'true' : 'false'}
+---
+
+${data.content}`;
+
+      fs.writeFileSync(filepath, markdown);
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        slug,
+        url: `/blog/${slug}`,
+        message: 'Blog post created successfully',
+        post: {
+          title: data.title,
+          description: data.description,
+          category: data.category,
+          tags: data.tags || [],
+          draft: data.draft === true || data.draft === 'true',
+          pubDate
+        }
+      }));
+      return;
+    }
+
+    // AI API: 获取博客列表（带过滤）
+    if (req.method === 'GET' && url.pathname === '/api/ai/posts') {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.replace('Bearer ', '');
+
+      if (!isValidAIToken(token)) {
+        res.writeHead(401, { ...corsHeaders, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Invalid or missing API token',
+          hint: 'Include Authorization header: Bearer <AI_API_TOKEN>'
+        }));
+        return;
+      }
+
+      const categoryFilter = url.searchParams.get('category');
+      const draftFilter = url.searchParams.get('draft');
+      const limit = parseInt(url.searchParams.get('limit') || '50');
+
+      const files = fs.readdirSync(BLOG_DIR).filter(f => f.endsWith('.md'));
+      let posts = files.map(file => {
+        const content = fs.readFileSync(path.join(BLOG_DIR, file), 'utf-8');
+        const match = content.match(/^---\n([\s\S]*?)\n---/);
+        const frontmatter: Record<string, any> = {};
+
+        if (match) {
+          match[1].split('\n').forEach(line => {
+            const [key, ...rest] = line.split(':');
+            if (key && rest.length) {
+              let value: any = rest.join(':').trim();
+              if (value.startsWith('[')) {
+                try {
+                  value = JSON.parse(value.replace(/'/g, '"'));
+                } catch {}
+              }
+              if (typeof value === 'string') {
+                value = value.replace(/^["']|["']$/g, '');
+              }
+              if (value === 'true') value = true;
+              if (value === 'false') value = false;
+              frontmatter[key.trim()] = value;
+            }
+          });
+        }
+
+        return {
+          slug: file.replace('.md', ''),
+          ...frontmatter,
+          contentLength: content.replace(/^---\n[\s\S]*?\n---\n*/, '').length,
+        };
+      });
+
+      // 应用过滤
+      if (categoryFilter) {
+        posts = posts.filter(p => p.category === categoryFilter);
+      }
+      if (draftFilter !== null) {
+        const isDraft = draftFilter === 'true';
+        posts = posts.filter(p => p.draft === isDraft);
+      }
+
+      // 排序
+      posts.sort((a, b) => {
+        const dateA = new Date(a.pubDate || '1970-01-01').getTime();
+        const dateB = new Date(b.pubDate || '1970-01-01').getTime();
+        return dateB - dateA;
+      });
+
+      // 限制数量
+      posts = posts.slice(0, limit);
+
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: true,
+        count: posts.length,
+        posts
+      }));
+      return;
+    }
+
+    // ==================== 原有 API 端点 ====================
 
     // 获取博客列表
     if (req.method === 'GET' && url.pathname === '/api/posts') {
