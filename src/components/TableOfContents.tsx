@@ -68,6 +68,22 @@ export default function TableOfContents({ content, lang = 'zh' }: Props) {
     return () => observer.disconnect();
   }, [headings]);
 
+  // Find active item index for auto-scroll
+  const activeIndex = headings.findIndex(h => h.id === activeId);
+
+  // Auto-scroll TOC to keep active item visible
+  useEffect(() => {
+    if (activeId && headings.length > 0) {
+      const activeElement = document.getElementById(`toc-item-${activeId}`);
+      if (activeElement) {
+        activeElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      }
+    }
+  }, [activeId, headings.length]);
+
   if (headings.length === 0) {
     return null;
   }
@@ -85,22 +101,6 @@ export default function TableOfContents({ content, lang = 'zh' }: Props) {
       });
     }
   };
-
-  // Find active item index for auto-scroll
-  const activeIndex = headings.findIndex(h => h.id === activeId);
-
-  // Auto-scroll TOC to keep active item visible
-  useEffect(() => {
-    if (activeId) {
-      const activeElement = document.getElementById(`toc-item-${activeId}`);
-      if (activeElement) {
-        activeElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-        });
-      }
-    }
-  }, [activeId]);
 
   return (
     <nav className="sticky top-32 max-h-[calc(100vh-10rem)] flex flex-col">
