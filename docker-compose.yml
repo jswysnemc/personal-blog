@@ -20,6 +20,7 @@ services:
       - API_PORT=3001
       - API_INTERNAL_URL=http://localhost:3001
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-blog_admin_2024}
+      - AI_API_TOKEN=${AI_API_TOKEN:-${ADMIN_PASSWORD:-blog_admin_2024}}
       - BLOG_DIR=/app/src/content/blog
       - COMMENTS_FILE=/app/data/comments.json
     volumes:
